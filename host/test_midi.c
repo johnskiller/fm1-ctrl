@@ -32,31 +32,32 @@ int main(void) {
     assert(midi_cap_len() == 3 && g(2).b[1] == 0x3C && g(2).b[0] == 0x90);
     keyscan_poll(0); keyscan_poll(0);  /* release top-row key before encoder tests */
 
-    /* T3: encoder 0, one CW detent -> single CC71 +1 (0x41) on ch 1 */
+    /* T3: encoder 0, one CW detent -> single CC20 +1 (0x41) on ch 1 (melodee-native map) */
     midi_cap_clear();
     const uint8_t cw[5]  = {0, 1, 3, 2, 0};
-    uint8_t ab;
+    uint16_t ab;   /* 16 bits: encoder fields live at bit positions 0..14 */
     for (int i = 0; i < 5; i++) { ab = cw[i]; encoders_poll(ab, 0); }
     assert(midi_cap_len() == 1);
     m = g(0);
-    assert(m.b[0] == 0xB0 && m.b[1] == 71 && m.b[2] == 0x41);
+    assert(m.b[0] == 0xB0 && m.b[1] == 20 && m.b[2] == 0x41);
 
     /* T3b: CCW detent -> 0x3F */
     const uint8_t ccw[4] = {2, 3, 1, 0};
     for (int i = 0; i < 4; i++) { ab = ccw[i]; encoders_poll(ab, 0); }
     assert(midi_cap_len() == 2);
     m = g(1);
-    assert(m.b[0] == 0xB0 && m.b[1] == 71 && m.b[2] == 0x3F);
+    assert(m.b[0] == 0xB0 && m.b[1] == 20 && m.b[2] == 0x3F);
 
-    /* T4: encoder 2 -> CC 84 (map table: ENC_CC = 71,74,84,7,1,91,93,10) */
+    /* T4: encoder 2 -> CC 22 (map table: ENC_CC = 20..27) */
     midi_cap_clear();
     for (int i = 0; i < 5; i++) { ab = (uint8_t)(cw[i] << 4); encoders_poll(ab, 0); }
-    assert(midi_cap_len() == 1 && g(0).b[1] == 84 && g(0).b[0] == 0xB0);
+    assert(midi_cap_len() == 1 && g(0).b[1] == 22 && g(0).b[0] == 0xB0);
 
-    /* T4b: encoder 3 -> CC 7 */
+    /* T4b: encoder 7 -> CC 27 (MASTER on melodee). NB: shift then keep 16 bits
+     * — casting the int-shift result to uint8_t truncates bit 14 to 0. */
     midi_cap_clear();
-    for (int i = 0; i < 5; i++) { ab = (uint8_t)(cw[i] << 6); encoders_poll(ab, 0); }
-    assert(midi_cap_len() == 1 && g(0).b[1] == 7 && g(0).b[0] == 0xB0);
+    for (int i = 0; i < 5; i++) { ab = (uint16_t)(cw[i] << 14); encoders_poll(ab, 0); }
+    assert(midi_cap_len() == 1 && g(0).b[1] == 27 && g(0).b[0] == 0xB0);
 
     /* T5: push+turn -> channel 2 (0xB1), same relative encoding */
     midi_cap_clear();

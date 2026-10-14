@@ -7,7 +7,7 @@
   "inputs": {
     "notes": {},
     "ccs":   { "20": "knob:0", "21": "knob:1", "22": "knob:2", "23": "knob:3",
-               "24": "knob:4", "25": "knob:5", "26": "knob:6", "27": "master" }
+               "24": "knob:4", "25": "knob:5", "26": "knob:6", "27": "knob:7" }
   },
   "outputs": {
     "keyLeds": { "noteOn": "mirror" }
