@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<!-- FM-1 USB MIDI probe — host→device direction test (fm1-ctrl spec §7 risk #1).
+     Open in Chromium (file:// is a secure context, WebMIDI works). No dependencies. -->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>FM-1 USB MIDI probe</title>
+<style>
+  body{font:14px/1.5 monospace;background:#111;color:#ddd;margin:16px;max-width:900px}
+  h1{font-size:16px;color:#8f8} select,button{font:inherit;margin:2px;padding:4px 8px;background:#222;color:#ddd;border:1px solid #444;border-radius:4px}
+  button.on{background:#284;color:#fff} #log{white-space:pre-wrap;background:#000;padding:8px;height:340px;overflow-y:auto;border:1px solid #333;margin-top:8px}
+  .in{color:#7cf}.out{color:#fa6}.warn{color:#f66}.ok{color:#8f8}
+  .row{margin:6px 0}
+</style>
+</head>
+<body>
+<h1>FM-1 USB MIDI probe — <span id="ctx"></span></h1>
+<div class="row">OUT(发往FM-1): <select id="outp"></select>
+  IN(来自FM-1): <select id="inp"></select> <button onclick="refresh()">rescan</button></div>
+<div class="row">
+  <button id="bNote" onclick="toggleNote(this)">Note On C4 (toggle)</button>
+  <button onclick="sendCC(71,64)">CC 71 = 64 (once)</button>
+  <button id="bCc" onclick="toggleCC(this)">CC 71 repeat 250ms (toggle)</button>
+  <button onclick="identity()">Sysex Identity Request</button>
+  <button onclick="panic()">Panic (notes off)</button>
+</div>
+<div class="row" id="status"></div>
+<div id="log"></div>
+<p>判定：① 按 Note On → <b>FM-1 出声</b> = USB MIDI in 方向通，spec 风险解除；
+② 有 ◀ 回显但无声 = in 方向通、当前固件不响应音符（仍证明栈可用）；
+③ 按 Note On 只有 ▶ 无任何 ◀/声 = host→device 不通（风险成立，Task 5 需换 probe 固件）。
+FM-1 本机按键/旋钮应出现 ◀ 行（顺带验证 device→host 与端口选择）。</p>
+<script>
+const log_=(cls,txt)=>{const d=document.getElementById('log');
+  d.innerHTML+=`<span class="${cls}">${txt}</span>\n`;d.scrollTop=d.scrollHeight;};
+const hex=b=>[...b].map(x=>x.toString(16).padStart(2,'0')).join(' ');
+let ac,outp,inp,noteOn=false,ccTimer=null,t0=performance.now(),lastNote=[60];
+document.getElementById('ctx').textContent=
+  (window.isSecureContext?'secure context ✓':'INSECURE')+
+  (navigator.requestMIDIAccess?' · WebMIDI ✓':' · WebMIDI ✗(用Chrome/Edge)');
+function ports(){let n=0;document.getElementById('outp').innerHTML='';
+  document.getElementById('inp').innerHTML='';
+  for(const p of ac.outputs.values()){const o=document.createElement('option');
+    o.value=p.id;o.textContent='▶ '+p.name;document.getElementById('outp').appendChild(o);
+    if(/fm.?1/i.test(p.name+' '+(p.manufacturer||''))){document.getElementById('outp').value=p.id;outp=p;n++;}}
+  for(const p of ac.inputs.values()){const o=document.createElement('option');
+    o.value=p.id;o.textContent='◀ '+p.name;document.getElementById('inp').appendChild(o);
+    if(/fm.?1/i.test(p.name+' '+(p.manufacturer||''))){document.getElementById('inp').value=p.id;inp=p;n++;}}
+  if(inp)inp.onmidimessage=e=>log_('in',`◀ ${(performance.now()-t0|0)}ms ${hex(e.data)}`);
+  document.getElementById('status').innerHTML=
+    `匹配到 <span class="${n?'ok':'warn'}">${n} 个 FM-1 口</span> · inputs=${ac.inputs.size} outputs=${ac.outputs.size}`;}
+async function refresh(){try{ac=await navigator.requestMIDIAccess({sysex:true});ports();
+  ac.onstatechange=()=>ports();}
+  catch(e){log_('warn','requestMIDIAccess 失败: '+e);}}
+const out=()=>ac&&ac.outputs.get(document.getElementById('outp').value);
+function send(b,tag){const o=out();if(!o)return log_('warn','无输出端口');
+  o.send(b);log_('out',`▶ ${(performance.now()-t0|0)}ms ${hex(b)} ${tag||''}`);}
+function toggleNote(btn){noteOn=!noteOn;btn.classList.toggle('on',noteOn);
+  send(noteOn?[0x90,60,100]:[0x80,60,0],noteOn?'C4 on':'C4 off');}
+function sendCC(c,v){send([0xB0,c,v],`CC${c}=${v}`);}
+function toggleCC(btn){if(ccTimer){clearInterval(ccTimer);ccTimer=null;
+    btn.classList.remove('on');return;}
+  let v=0;ccTimer=setInterval(()=>{v=(v+8)&127;sendCC(71,v);},250);btn.classList.add('on');}
+function identity(){send([0xF0,0x7E,0x7F,0x06,0x01,0xF7],'identity request (有回显则连ident都能拿到)');}
+function panic(){send([0xB0,123,0],'all notes off');if(noteOn){noteOn=false;
+  document.getElementById('bNote').classList.remove('on');}}
+refresh();
+</script>
+</body>
+</html>
