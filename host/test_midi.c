@@ -1,6 +1,8 @@
 /* fm1-ctrl host tests — MIDI byte-stream contract (plan Tasks 1-2).
  *
  * Build+run via build.sh. Plain asserts, no framework.
+ * Panel topology (real FM-1): 27 keys (notes 48..72), 14 buttons (CC 40..53),
+ * 7 encoders (CC 20..26 in the melodee-native default map).
  */
 #include <assert.h>
 #include <stdio.h>
@@ -30,12 +32,12 @@ int main(void) {
     /* T2: top row idx 14 is also C4 */
     keyscan_poll(1u << 14); keyscan_poll(1u << 14);
     assert(midi_cap_len() == 3 && g(2).b[1] == 0x3C && g(2).b[0] == 0x90);
-    keyscan_poll(0); keyscan_poll(0);  /* release top-row key before encoder tests */
+    keyscan_poll(0); keyscan_poll(0);  /* release before encoder tests */
 
-    /* T3: encoder 0, one CW detent -> single CC20 +1 (0x41) on ch 1 (melodee-native map) */
+    /* T3: encoder 0 (SELECT), one CW detent -> single CC20 +1 (0x41) on ch 1 */
     midi_cap_clear();
     const uint8_t cw[5]  = {0, 1, 3, 2, 0};
-    uint16_t ab;   /* 16 bits: encoder fields live at bit positions 0..14 */
+    uint16_t ab;   /* 16 bits: encoder fields live at bit positions 0..12 */
     for (int i = 0; i < 5; i++) { ab = cw[i]; encoders_poll(ab, 0); }
     assert(midi_cap_len() == 1);
     m = g(0);
@@ -48,16 +50,15 @@ int main(void) {
     m = g(1);
     assert(m.b[0] == 0xB0 && m.b[1] == 20 && m.b[2] == 0x3F);
 
-    /* T4: encoder 2 -> CC 22 (map table: ENC_CC = 20..27) */
+    /* T4: encoder 2 (PRESETS) -> CC 22 */
     midi_cap_clear();
-    for (int i = 0; i < 5; i++) { ab = (uint8_t)(cw[i] << 4); encoders_poll(ab, 0); }
+    for (int i = 0; i < 5; i++) { ab = (uint16_t)(cw[i] << 4); encoders_poll(ab, 0); }
     assert(midi_cap_len() == 1 && g(0).b[1] == 22 && g(0).b[0] == 0xB0);
 
-    /* T4b: encoder 7 -> CC 27 (MASTER on melodee). NB: shift then keep 16 bits
-     * — casting the int-shift result to uint8_t truncates bit 14 to 0. */
+    /* T4b: encoder 6 (KNOB 4) -> CC 26 */
     midi_cap_clear();
-    for (int i = 0; i < 5; i++) { ab = (uint16_t)(cw[i] << 14); encoders_poll(ab, 0); }
-    assert(midi_cap_len() == 1 && g(0).b[1] == 27 && g(0).b[0] == 0xB0);
+    for (int i = 0; i < 5; i++) { ab = (uint16_t)(cw[i] << 12); encoders_poll(ab, 0); }
+    assert(midi_cap_len() == 1 && g(0).b[1] == 26 && g(0).b[0] == 0xB0);
 
     /* T5: push+turn -> channel 2 (0xB1), same relative encoding */
     midi_cap_clear();
@@ -80,10 +81,26 @@ int main(void) {
     midi_recv3(0x90, 127, 100);
     assert(leds_key_get(127) == 0);
 
-    /* T8: transport buttons idx 27..29 -> notes 36/37/38 */
+    /* T8: buttons — panel idx 32 (PLAY) -> CC 45, idx 37 (OCT-) -> CC 52;
+     * press = 127, release = 0 */
     midi_cap_clear();
-    keyscan_poll(1u << 27); keyscan_poll(1u << 27);
-    assert(midi_cap_len() == 1 && g(0).b[0] == 0x90 && g(0).b[1] == 36);
+    const uint64_t play_btn = 1ull << (27 + 10);
+    keyscan_poll(play_btn);
+    assert(midi_cap_len() == 0);
+    keyscan_poll(play_btn);
+    assert(midi_cap_len() == 1);
+    m = g(0);
+    assert(m.b[0] == 0xB0 && m.b[1] == 50 && m.b[2] == 127);
+    keyscan_poll(0); keyscan_poll(0);
+    assert(midi_cap_len() == 2 && g(1).b[1] == 50 && g(1).b[2] == 0);
+
+    /* T9: simultaneous key + button in one mask */
+    midi_cap_clear();
+    const uint64_t both = (1ull << 5) | (1ull << (27 + 13));
+    keyscan_poll(both); keyscan_poll(both);
+    assert(midi_cap_len() == 2);
+    assert(g(0).b[0] == 0x90 && g(0).b[1] == 53);          /* key idx 5 = 53 */
+    assert(g(1).b[0] == 0xB0 && g(1).b[1] == 53 && g(1).b[2] == 127); /* OCT+ */
 
     printf("ALL HOST TESTS PASSED\n");
     return 0;

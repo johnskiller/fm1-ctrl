@@ -2,8 +2,6 @@
 #include "midi_io.h"
 #include "map.h"
 
-#define NENC 8
-
 static uint8_t prev_q[NENC];
 static int     steps[NENC]; /* signed transitions within current detent */
 

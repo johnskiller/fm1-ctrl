@@ -19,7 +19,7 @@
 #include "encoders.h"
 #include "leds.h"
 
-static uint32_t mask;
+static uint64_t mask;
 static uint8_t  push;
 
 static long rd(const char *fmt) { long v = 0; if (scanf(fmt, &v) != 1) exit(1); return v; }
@@ -47,9 +47,9 @@ int main(void) {
     long a = 0, b = 0, c = 0;
     while (scanf("%7s", cmd) == 1) {
         if      (!strcmp(cmd, "q")) break;
-        else if (!strcmp(cmd, "k")) { a = rd("%ld"); mask |=  1u << a; keyscan_poll(mask); keyscan_poll(mask); }
-        else if (!strcmp(cmd, "K")) { a = rd("%ld"); mask &= ~(1u << a); keyscan_poll(mask); keyscan_poll(mask); }
-        else if (!strcmp(cmd, "s")) { a = rd("%lx"); mask = (uint32_t)a; keyscan_poll(mask); keyscan_poll(mask); }
+        else if (!strcmp(cmd, "k")) { a = rd("%ld"); mask |=  1ull << a; keyscan_poll(mask); keyscan_poll(mask); }
+        else if (!strcmp(cmd, "K")) { a = rd("%ld"); mask &= ~(1ull << a); keyscan_poll(mask); keyscan_poll(mask); }
+        else if (!strcmp(cmd, "s")) { a = rd("%lx"); mask = (uint64_t)a; keyscan_poll(mask); keyscan_poll(mask); }
         else if (!strcmp(cmd, "e")) { a = rd("%ld"); b = rd("%ld"); turn((int)a, (int)b); }
         else if (!strcmp(cmd, "E")) { a = rd("%ld"); push ^= (uint8_t)(1u << a); }
         else if (!strcmp(cmd, "m")) { a = rd("%ld"); b = rd("%ld"); c = rd("%ld");

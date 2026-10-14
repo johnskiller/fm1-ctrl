@@ -18,14 +18,21 @@ LED/屏幕。
 
 ## 2. v1 范围（In scope）
 
-| 模块 | 行为 |
-|---|---|
-| 27 键 | 音符输入：2 行键盘映射（见 §4），velocity 固定 100（v1 无压力感应） |
-| 8 编码器 | CC 输出（map 约定分配）；按turn = 相对 CC，push+turn = 绝对 CC（备用通道） |
-| 按钮 | play/stop/rec、octave shift、page（map 约定分配 note/CC） |
-| LED 回传 | emu → MIDI → LED 网格（idea 1 的 grid 复用，浏览器 push） |
-| 屏幕回传 | v1 最小化：仅显示连接状态 + 当前 map 名；值显示走 LED（可选 v1.1） |
-| USB | UAC 不需要；MIDI in+out 双向 |
+真实面板拓扑（Felucca 系 panel.c，CTL-1 校准表证实）：
+
+| 控件 | 数量 | v1 输出 |
+|---|---|---|
+| 琴键 | 27（下排 C3..B3 = note 48..61，上排 C4..A4 = note 60..72） | note on/off，velocity 固定 100（fm1-velocity 已证明 ADC+DRIVE 可读压力，后续升级） |
+| 编码器 | 7（SELECT/ALGORITHM/PRESETS/K1-K4） | 相对 CC 64±n（melodee 默认 map = CC 20..26）；push+turn → ch2 二层 |
+| 按钮 | 14（FX SEL ENV LFO EDIT GLO HOME SAVE ARP SEQ PLAY REC OCT− OCT+） | CC 40..53，按下 127 / 释放 0（map 可改） |
+| LED 回传 | 5×7 网格 + 键位 | emu → MIDI → LED（idea 1 grid 复用） |
+| 屏幕回传 | v1 最小化：连接状态 + 当前 map 名；值显示走 LED（v1.1 可选） |
+| USB | MIDI in+out 双向（**实机已验证**，2026-10-14 John） |
+
+**与 CTL-1 的差异（John 实机对照 2026-10-14）**：CTL-1 只有 Play 页 K1-K4 发 CC、
+PLAY/REC 发事件、PRESET 发 ProgChange；SELECT/ALGORITHM 和多数命令按钮**无任何
+MIDI 输出**（只改它自己的页面状态）。fm1-ctrl 的承诺：**每个控件都发事件，
+无一遗漏** — 这是本项目的存在理由。
 
 **Out of scope (not v1)**: sequencer/存储/GM/节拍器、屏幕显示 emu 参数值、
 MIDI DIN 转发、多 map 切换 UI（v1 固定编译进一份 map）。

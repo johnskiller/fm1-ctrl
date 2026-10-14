@@ -13,9 +13,15 @@ FM-1 LEDs/screen ◀──USB MIDI── browser shim ◀── emu state (steps
 
 - **Thinnest firmware in the ecosystem**: scan → USB MIDI out, feedback → LEDs/screen.
   No DSP, no storage, no sequencer. (~1–2 days)
+- **Thick vs thin**: CTL-1 (charlesvestal/fm1-ctl) already exists but is the
+  *thick* kind — its own brain (scale/chords, CC banks, arp, Euclidean drums,
+  onboard GM). fm1-ctrl is the *thin* kind: a transparent front-panel for any
+  emu — every key/knob/button action goes out raw as MIDI, mapping lives in the
+  emu side (JSON map), zero logic on the FM-1.
 - **One generic shim + one JSON map per emulator** (~half day each). The JSON
   map convention (`docs/map-convention.md`) is the shared piece — maps are static
-  files the hub can host.
+  files the hub can host. Emus that already consume Web MIDI natively (melodee's
+  simulator does) need no shim at all — the map just bakes into the firmware.
 - **DriftSeq's skeleton**: the keyscan/LED/USB-MIDI layer is exactly what idea 3
   (DriftSeq, master MIDI sequencer) grows on. Doubles as idea 4's
   MIDI-in→audio latency test rig.

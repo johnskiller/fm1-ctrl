@@ -1,17 +1,25 @@
 /* fm1-ctrl key scan — pure logic, no I/O (host-tested per plan Task 1).
  *
- * Key index map (spec §4):
- *   idx 0..13  bottom row, notes 48..61 (C3..B3)
- *   idx 14..26 top row,    notes 60..72 (C4..A4)
- *   idx 27..29 transport PLAY/STOP/REC -> notes 36/37/38
- * Velocity fixed 100 (0x64) in v1 (no pressure sensing).
+ * Real panel topology (Felucca-lineage panel.c, verified against CTL-1):
+ *   27 keys   idx 0..26: bottom row 0..13 = notes 48..61 (C3..B3),
+ *                        top row    14..26 = notes 60..72 (C4..A4)
+ *   14 buttons idx 27..40, panel order:
+ *     FX SEL ENV LFO EDIT GLO HOME SAVE ARP SEQ PLAY REC OCT- OCT+
+ *     -> CC 40..53 (default map, JSON-overridable), 127 on press, 0 on release
+ *   7 encoders (encoders.c): SELECT ALGORITHM PRESETS KNOB1..4 -> CC 20..26
+ *
+ * Key velocity fixed 100 (0x64) in v1; buttons are momentary CCs.
  */
 #ifndef KEYSCAN_H
 #define KEYSCAN_H
 #include <stdint.h>
 
+#define NKEYS   27
+#define NBUTTONS 14
+#define NSTATE  (NKEYS + NBUTTONS)   /* 41 scan points */
+
 void keyscan_init(void);
-/* raw_mask bit i = key i contact closed this scan frame (raw, pre-debounce) */
-void keyscan_poll(uint32_t raw_mask);
+/* raw_mask bit i = scan point i contact closed this frame (raw, pre-debounce) */
+void keyscan_poll(uint64_t raw_mask);
 
 #endif
