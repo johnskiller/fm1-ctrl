@@ -50,3 +50,50 @@ Every USB register access in the driver goes through this header (`firmware/hal/
 `usb_start()` at `firmware/src/usb.c:1044-1058`: `fm1_usb_reset()` → 25 ms delay → `fm1_usb_attach(ep0buf)` → enable suspend/resume/reset + EP0 TX interrupts (polled) → `fm1_usb_ep_enable(0x1Fu)` → `usb.up = usb.timeouts < 3u`. Called at `main_fm1.c:329` (normal boot) and `main_fm1.c:240` (safe mode). `usb_retry(now_ms)` at `firmware/src/usb.c:1063-1071` re-runs it 1×/s from the main loop so late-plugged cables still enumerate (called at `main_fm1.c:349`). Safe mode (`main_fm1.c:216-255`) keeps `usb_start()`/`usb_retry()` alive with no audio engine.
 
 *(§2 IN, §3 descriptors, §4 port notes, §5 verdict to follow.)*
+
+---
+
+## 6. PORT RECIPE (2026-10-14, Task 5) — verified against x0x + CTL-1
+
+**Architecture fact**: the Felucca platform is one unity compilation unit.
+x0x's `firmware/src/x0x.c` #includes in order: libc.c, lcd.c, gfx.c, usb.c,
+midi_uart.c, storage.c, ota.c, then app/*.c ending in main_fm1.c. The HAL
+(firmware/hal/, 21 headers, 128 KB) is header-only. CTL-1 has the same layout
+(its unity root is app/main_fm1.c... same include chain via x0x-equivalent).
+
+**What fm1-ctrl vendors from x0x** (GPL-3.0, keep headers + attribution):
+- `firmware/hal/*` — all 21 headers, unchanged (they are the platform contract).
+- `firmware/src/usb.c` — the whole USB-MIDI driver, compiled with
+  `FELUCCA_UAC=0 FELUCCA_CDC=0` (= pure MIDI, exactly our config; the
+  `#if` blocks compile out UAC/CDC/OTA extras we don't set).
+- `firmware/src/libc.c` (runtime helpers), `firmware/src/lcd.c` + `gfx.c`
+  (boot splash + map name display; can be stubbed later).
+- `firmware/src/ota.c` + storage-less loader path: KEEP — M-UPGRADE/web
+  installer compatibility is how we flash without recovery hardware.
+- midi_uart.c: SKIP in v1 (TRS DIN out of scope per spec §2).
+
+**What we write fresh** (one unity root `firmware/src/ctrl.c`, mirroring x0x.c):
+1. `#define FELUCCA_ID "FM-1_920"` (dev `FM-1_9299`; sloop=_9xxxx, x0x=_9,
+   CTL-1 uses its own; _9299 avoids Polly FM-1_3xxxxx and CTL-1).
+2. glue: `keyscan_poll()` fed from `fm1_in.notes`/`fm1_in.buttons` each frame —
+   x0x input HAL gives debounced bits + edges (`fm1_input_edges()`,
+   `fm1_enc_take()`); our encoders.c may be REPLACED by the HAL's superior
+   quadrature+detent decoder (FM1_ENC table, rest-state learning) — decided
+   during the port; emit via `midi_out_event()`-equivalent = x0x
+   `plat_midi_out(pkt)` with pkt = CIN<<0 | st<<8 | d1<<16 | d2<<24.
+3. MIDI-in consumer: drain `plat_midi_in(&pkt)` in the main loop -> leds.c.
+4. TIMER5 ISR: copy x0x's `fm1_timer5_irq` minus audio/UAC (usb_poll every
+   5th tick, fm1_ms accumulation).
+5. main loop: `fm1_wdt_feed(); usb_retry(); drain midi-in; scan->emit;
+   60 fps LED frame`.
+
+**Package identity**: product string "fm1-ctrl", USB VID 0x1209 PID 0x0001
+(pid.codes test id, same as x0x — melodee/CTL-1 pattern each have own PID;
+TODO: register a pid.codes PID before public release).
+
+**Flash/RAM budget**: x0x usb.c+HAL ≈ 6-8 KB code, our app < 2 KB — the
+581,564 B XIP slot is not a constraint; no storage.c needed (map is const).
+
+**Test gate before on-device**: build with the pi32v2 toolchain (AC79_SDK
+exported), then host-test the glue: same ALL HOST TESTS PASSED suite must
+pass against the ported emit path (plat_midi_out captured instead of ring).
