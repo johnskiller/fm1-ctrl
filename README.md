@@ -25,6 +25,16 @@ FM-1 LEDs/screen ◀──USB MIDI── browser shim ◀── emu state (steps
 Paper-first, following the proven Polly pipeline: **spec → host simulator →
 shim → firmware**. See `docs/specs/`.
 
+Progress (2026-10-14):
+
+- ✅ spec v1 + map-convention v0.1 + melodee map + implementation plan
+- ✅ Tasks 1–2: host-tested C modules (keyscan/encoders/leds/midi_io) + terminal
+  host sim — `sh build.sh` → `ALL HOST TESTS PASSED`
+- ✅ Task 4: `tools/map2c.py` (JSON map → `firmware/map_data.c`, idempotent)
+- 🔄 Task 3: generic web shim + melodee bridge (node tests)
+- 🔄 Task 5 prep: JieLi USB-MIDI investigation (`docs/research/usb-midi.md`)
+- ⬜ Task 5: firmware port · ⬜ Task 6: on-device validation + latency
+
 ## Layout
 
 ```
