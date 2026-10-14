@@ -6,3 +6,4 @@ build/
 
 # Tooling
 .codegraph/
+__pycache__/
