@@ -23,14 +23,14 @@ keyscan patterns. `/tmp/melodee` has the melodee tree if HAL patterns are needed
 
 ---
 
-## Task 0: Repo skeleton (DONE — this commit)
+## Task 0: Repo skeleton (DONE — commit b046f97)
 
 - [x] README (positioning + layout)
 - [x] `docs/specs/2026-10-14-controller-v1.md`
 - [x] `docs/map-convention.md` v0.1 + `docs/maps/melodee.json`
 - [x] LICENSE, directory skeleton
 
-## Task 1: Host simulator skeleton — `host/sim.c` + module stubs
+## Task 1: Host simulator skeleton — `host/sim.c` + module stubs (DONE — 16725b4)
 
 **Objective:** A terminal/SDL host binary that instantiates the same modules the
 firmware will (keyscan, encoders, leds, midi_io) and prints every MIDI byte the
@@ -52,7 +52,7 @@ firmware will (keyscan, encoders, leds, midi_io) and prints every MIDI byte the
 4. Run: `cc -O2 -Wall -o /tmp/fm1sim host/sim.c firmware/*.c -DMIDI_HOST && echo ok`
 5. Commit: `feat: host sim skeleton + keyscan/midi modules (host-tested)`
 
-## Task 2: Encoders + LED feedback on host
+## Task 2: Encoders + LED feedback on host (DONE — 16725b4, merged into Task 1's commit)
 
 **Objective:** Encoders emit relative CC; LED grid state driven from MIDI in
 renders as ASCII art in the host sim (same code path the firmware LED driver
@@ -91,10 +91,11 @@ published emulator.
    https://johnskiller.github.io/melodee/webapp/simulator/ — knob turns on page.
 4. Commit `feat: generic web shim + melodee bridge`.
 
-## Task 4: map2c compiler
+## Task 4: map2c compiler (DONE — 2697284)
 
-**Objective:** `tools/map2c.py` compiles a JSON map into `map.c`'s const table
-so firmware and shim share one source of truth.
+**Objective:** `tools/map2c.py` compiles a JSON map into const C tables
+(`firmware/map_data.c`, pure data; accessors in `firmware/map.c`) so firmware
+and shim share one source of truth. DONE, incl. idempotence check.
 
 **Files:**
 - Create: `tools/map2c.py`
