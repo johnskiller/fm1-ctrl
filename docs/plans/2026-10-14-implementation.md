@@ -106,7 +106,9 @@ and shim share one source of truth. DONE, incl. idempotence check.
 2. Implement; wire into a `build.sh` step.
 3. Commit `feat: map2c — JSON map to const C table`.
 
-## Task 5: JieLi firmware port
+## Task 5: JieLi firmware port (DONE — 1744adb port boundary, c912b69 on-device build, de5b077 chore)
+
+**Outcome (2026-10-14):** `tools/build.py` (x0x fork, native pi32v2) produces `build/ctrl.fwsc` (609632 B, identity FM-1_9299; app 28368 B, RAM 5108/98304). Unity root `firmware/src/ctrl.c` = Felucca platform (HAL/usb/lcd/gfx/ota/panel, UAC=0 CDC=0 pure-MIDI) + host-tested modules + glue; boot/main in `ctrl_main.c`. Disassembly verified: main loop -> keyscan_poll -> plat_midi_in -> midi_recv3; transport_usb3 emit path. Host tests stay green. v1 note: panel calibration not persisted (stock panels only). **On-device flash + MIDI/LED verification pending (John).**
 
 **Objective:** Same modules compiled for the FM-1 (pi32v2), USB MIDI in/out
 live, LEDs driven from MIDI in. Build with `JIELI_TOOLCHAIN` + `AC79_SDK` set.
