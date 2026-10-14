@@ -1,0 +1,14 @@
+{
+  "version": "0.1",
+  "emu": "melodee",
+  "url": "https://johnskiller.github.io/melodee/webapp/simulator/",
+  "inputs": {
+    "notes": {},
+    "ccs":   { "71": "knob:0", "74": "knob:1", "84": "knob:2",
+                "7": "knob:3",  "1": "knob:4", "91": "knob:5",
+               "93": "knob:6", "10": "knob:7" }
+  },
+  "outputs": {
+    "keyLeds": { "noteOn": "mirror" }
+  }
+}

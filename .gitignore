@@ -1,0 +1,8 @@
+# Build & test
+build/
+*.o
+*.elf
+*.fwsc
+
+# Tooling
+.codegraph/
