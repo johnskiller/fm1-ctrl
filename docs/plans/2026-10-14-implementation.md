@@ -117,7 +117,9 @@ live, LEDs driven from MIDI in. Build with `JIELI_TOOLCHAIN` + `AC79_SDK` set.
 
 **Steps:**
 1. Study sloop/melodee USB-MIDI init (both proved UAC+MIDI paths) — copy the
-   descriptor handling pattern for a MIDI-only config.
+   descriptor handling pattern for a MIDI-only config. (USB MIDI in/out both
+   VERIFIED on device by John 2026-10-14 — port is a pattern-copy job, not a
+   feasibility question; see docs/research/usb-midi.md.)
 2. Port modules (they must compile unchanged — that's the point of host-first).
 3. Build → `fm1-ctrl.fwsc`, report flash headroom in the PR/release notes.
 4. Commit `feat: FM-1 firmware port`.

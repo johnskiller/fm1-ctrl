@@ -80,7 +80,8 @@ web/
 
 ## 7. 风险
 
-- **WebMIDI 仅 Chromium** — 可接受（emu 用户已是 wasm/AudioWorklet Chrome 用户）。
+- ~~**WebMIDI 仅 Chromium**~~ — 可接受（emu 用户已是 wasm/AudioWorklet Chrome 用户）。
 - 35 个 emu 分裂 → JSON map convention 是收敛点；maps 放 hub 可静态托管。
-- FM-1 USB MIDI in 是否真的能收 host 数据（Felucca 系 USB stack）——
-  第一周在真机上验证，若不通降级为单向控制器（仍可用的 v1）。
+- ~~**FM-1 USB MIDI in 是否真的能收 host 数据**~~ — **已解除（2026-10-14 John 实机验证）**：
+  USB MIDI in/out 双向均正常工作。剩余工作只是移植时抄对 SDK 的 init/rx 模式
+  （见 docs/research/usb-midi.md）。
