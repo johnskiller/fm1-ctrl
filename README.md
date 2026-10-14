@@ -55,3 +55,6 @@ web/                  generic shim JS + per-emu glue
 ## License
 
 GPL-3.0-or-later — matches the FM-1 firmware ecosystem (Felucca lineage).
+
+
+**Try it without hardware:** open `web/panel-emu.html` — click keys/buttons/encoders, watch the exact MIDI bytes the firmware would send, plus the LED feedback loopback.
