@@ -1,6 +1,8 @@
 #include "midi_io.h"
 #include "leds.h"
 
+midi_transport_fn midi_transport_send = 0;
+
 void midi_io_init(void) {}
 
 /* host -> device: route feedback per spec §5.
@@ -32,7 +34,7 @@ void midi_emit3(uint8_t st, uint8_t d1, uint8_t d2) {
         cap_n++;
     }
 #else
-    /* MIDI_USB: JieLi SDK dev_midi write lands here in Task 5 */
-    (void)st; (void)d1; (void)d2;
+    if (midi_transport_send)
+        midi_transport_send(st, d1, d2);
 #endif
 }

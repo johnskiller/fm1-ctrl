@@ -4,7 +4,7 @@ set -e
 cd "$(dirname "$0")"
 mkdir -p build
 CC=${CC:-cc}
-MODS="firmware/keyscan.c firmware/encoders.c firmware/leds.c firmware/midi_io.c firmware/map.c firmware/map_data.c"
+MODS="firmware/keyscan.c firmware/encoders.c firmware/leds.c firmware/midi_io.c firmware/map.c firmware/map_data.c firmware/ctrl_glue.c"
 
 # map data is generated from the JSON map (single source of truth with the shim)
 python3 tools/map2c.py docs/maps/melodee.json -o firmware/map_data.c

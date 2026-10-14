@@ -10,6 +10,7 @@
 #include "keyscan.h"
 #include "encoders.h"
 #include "leds.h"
+#include "ctrl_glue.h"
 
 static midi_msg3 g(int i) { return midi_cap_get(i); }
 
@@ -103,6 +104,21 @@ int main(void) {
     assert(midi_cap_len() == 2);
     assert(g(0).b[0] == 0x90 && g(0).b[1] == 58);          /* key idx 5 = 58 */
     assert(g(1).b[0] == 0xB0 && g(1).b[1] == 53 && g(1).b[2] == 127); /* OCT+ */
+
+    /* T10: the ctrl_glue facade drives the same bytes (portability boundary).
+     * Fresh modules via ctrl_init, then a key + button + encoder + midi-in. */
+    midi_cap_clear();
+    ctrl_init();
+    ctrl_frame_scan(1ull << 3); ctrl_frame_scan(1ull << 3);   /* key idx 3 = note 56 */
+    ctrl_frame_scan(0); ctrl_frame_scan(0);
+    ctrl_frame_enc(0, 0); ctrl_frame_enc(1, 0); ctrl_frame_enc(3, 0);
+    ctrl_frame_enc(2, 0); ctrl_frame_enc(0, 0);               /* enc0 CW one detent */
+    ctrl_midi_in3(0xB0, 5, 0x3C);   /* consumes: LED grid, no emit */
+    assert(midi_cap_len() == 3);
+    assert(g(0).b[0] == 0x90 && g(0).b[1] == 56 && g(0).b[2] == 0x64);
+    assert(g(1).b[0] == 0x80 && g(1).b[1] == 56);
+    assert(g(2).b[0] == 0xB0 && g(2).b[1] == 20 && g(2).b[2] == 0x41);
+    assert(leds_grid_get(5) == 0x3C);
 
     printf("ALL HOST TESTS PASSED\n");
     return 0;
