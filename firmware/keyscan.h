@@ -1,8 +1,7 @@
 /* fm1-ctrl key scan — pure logic, no I/O (host-tested per plan Task 1).
  *
  * Real panel topology (Felucca-lineage panel.c, verified against CTL-1):
- *   27 keys   idx 0..26: bottom row 0..13 = notes 48..61 (C3..B3),
- *                        top row    14..26 = notes 60..72 (C4..A4)
+ *   27 keys   idx 0..26 = notes 53..79 (F3..G5), CTL-1 KEY0_NOTE 53
  *   14 buttons idx 27..40, panel order:
  *     FX SEL ENV LFO EDIT GLO HOME SAVE ARP SEQ PLAY REC OCT- OCT+
  *     -> CC 40..53 (default map, JSON-overridable), 127 on press, 0 on release

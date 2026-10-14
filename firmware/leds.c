@@ -2,9 +2,9 @@
 
 #define GRID_ROWS 16
 
-/* physical key+button note span (bottom C3 48 .. top A4 72, transport 36..38) */
-#define NOTE_MIN 36
-#define NOTE_MAX 72
+/* physical key+button note span (keys F3..G5 = notes 53..79) */
+#define NOTE_MIN 53
+#define NOTE_MAX 79
 
 static uint8_t grid[GRID_ROWS];
 static uint8_t keyled[128];

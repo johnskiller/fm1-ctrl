@@ -16,22 +16,22 @@ static midi_msg3 g(int i) { return midi_cap_get(i); }
 int main(void) {
     keyscan_init(); encoders_init(); leds_init(); midi_io_init();
 
-    /* T1: bottom row idx 0..13 = C3..B3 (notes 48..61), so idx 12 = C4 = 60;
-     * debounce needs 2 stable frames */
+    /* T1: chromatic from F3 (CTL-1 KEY0_NOTE): key idx 12 = note 65.
+     * Debounce needs 2 stable frames. */
     keyscan_poll(1u << 12);
     assert(midi_cap_len() == 0);
     keyscan_poll(1u << 12);
     assert(midi_cap_len() == 1);
     midi_msg3 m = g(0);
-    assert(m.b[0] == 0x90 && m.b[1] == 0x3C && m.b[2] == 0x64);
+    assert(m.b[0] == 0x90 && m.b[1] == 53 + 12 && m.b[2] == 0x64);
     keyscan_poll(0); keyscan_poll(0);
     assert(midi_cap_len() == 2);
     m = g(1);
-    assert(m.b[0] == 0x80 && m.b[1] == 0x3C && m.b[2] == 0x00);
+    assert(m.b[0] == 0x80 && m.b[1] == 53 + 12 && m.b[2] == 0x00);
 
-    /* T2: top row idx 14 is also C4 */
+    /* T2: key idx 14 = note 67 (G4) */
     keyscan_poll(1u << 14); keyscan_poll(1u << 14);
-    assert(midi_cap_len() == 3 && g(2).b[1] == 0x3C && g(2).b[0] == 0x90);
+    assert(midi_cap_len() == 3 && g(2).b[1] == 67 && g(2).b[0] == 0x90);
     keyscan_poll(0); keyscan_poll(0);  /* release before encoder tests */
 
     /* T3: encoder 0 (SELECT), one CW detent -> single CC20 +1 (0x41) on ch 1 */
@@ -73,7 +73,8 @@ int main(void) {
     midi_recv3(0xB0, 71, 64);
     assert(leds_grid_get(15) == 0);
 
-    /* T7: key LED mirror on note on/off; unknown note is a no-op */
+    /* T7: key LED mirror on note on/off; unknown note is a no-op.
+     * Key span is now F3..G5 = notes 53..79. */
     midi_recv3(0x90, 60, 100);
     assert(leds_key_get(60) == 1);
     midi_recv3(0x80, 60, 0);
@@ -94,12 +95,13 @@ int main(void) {
     keyscan_poll(0); keyscan_poll(0);
     assert(midi_cap_len() == 2 && g(1).b[1] == 50 && g(1).b[2] == 0);
 
-    /* T9: simultaneous key + button in one mask */
+    /* T9: simultaneous key + button in one mask.
+     * key idx 5 -> note 58 (53+5, A#3); button idx 13 (OCT+) -> CC 53. */
     midi_cap_clear();
     const uint64_t both = (1ull << 5) | (1ull << (27 + 13));
     keyscan_poll(both); keyscan_poll(both);
     assert(midi_cap_len() == 2);
-    assert(g(0).b[0] == 0x90 && g(0).b[1] == 53);          /* key idx 5 = 53 */
+    assert(g(0).b[0] == 0x90 && g(0).b[1] == 58);          /* key idx 5 = 58 */
     assert(g(1).b[0] == 0xB0 && g(1).b[1] == 53 && g(1).b[2] == 127); /* OCT+ */
 
     printf("ALL HOST TESTS PASSED\n");
