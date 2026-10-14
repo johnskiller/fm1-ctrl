@@ -54,7 +54,9 @@ web/
 
 - 27 键 = 2 行 × 13/14：上排白键 C4 起 13 键，下排 C3 起 14 键（与 idea 1
   grid 的 black-keys-as-pitch-row 兼容，后续 DriftSeq 复用同一布局）。
-- 编码器 1–8 → CC 71/74/84/7/1/91/93/10（map 可覆盖）。
+- 编码器 1–8 → **CC 20–27**（修订 2026-10-14：采用 melodee emu 的原生约定 —
+  其页面 `midiKnob()` 以 CC 20–26 为旋钮角色、CC 27 为 MASTER，且 abs 模式
+  天然消化相对编码器 64±n。默认 map = melodee 兼容，零 shim 直连）。
 - 按钮: PLAY=note 36, STOP=note 37, REC=note 38, OCT- / OCT+ = CC 102/103,
   PAGE = CC 104。
 

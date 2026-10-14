@@ -2,11 +2,12 @@
   "version": "0.1",
   "emu": "melodee",
   "url": "https://johnskiller.github.io/melodee/webapp/simulator/",
+  "native": true,
+  "notes": "melodee's page consumes WebMIDI directly (index.html midiOn()): notes pass through to the firmware synth; CC 20..26 = knob roles 0..6 via worklet.js midiKnob() (abs mode computes value - last, which digests the controller's relative 64+-n encoding natively); CC 27 = MASTER (0..127 -> 0..1023). The page emits no MIDI out, so LED feedback is mirror-echo only. With the controller firmware compiled with this map, NO shim is needed: enable the page's knobson option (mode=abs) and play.",
   "inputs": {
     "notes": {},
-    "ccs":   { "71": "knob:0", "74": "knob:1", "84": "knob:2",
-                "7": "knob:3",  "1": "knob:4", "91": "knob:5",
-               "93": "knob:6", "10": "knob:7" }
+    "ccs":   { "20": "knob:0", "21": "knob:1", "22": "knob:2", "23": "knob:3",
+               "24": "knob:4", "25": "knob:5", "26": "knob:6", "27": "master" }
   },
   "outputs": {
     "keyLeds": { "noteOn": "mirror" }

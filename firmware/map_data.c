@@ -2,7 +2,7 @@
  * Regenerate: python3 tools/map2c.py docs/maps/melodee.json -o firmware/map_data.c */
 #include "map.h"
 
-const uint8_t MAP_ENC_CC[8] = { 71, 74, 84, 7, 1, 91, 93, 10 };
+const uint8_t MAP_ENC_CC[8] = { 20, 21, 22, 23, 24, 25, 26, 0 };
 const uint8_t MAP_BTN_NOTE[3] = { 36, 37, 38 };
 const map_led_cfg_t MAP_LED = { 0, 0, 0 };
 const uint8_t MAP_MIRROR = 1;

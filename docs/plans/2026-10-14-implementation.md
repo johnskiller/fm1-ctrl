@@ -146,7 +146,7 @@ screen value display, MIDI DIN, non-Chromium browsers.
 
 ## Risks / open questions
 
-- FM-1 USB MIDI **in** (host→device) support in the Felucca-lineage stack is
-  unverified — Task 5's step 1 resolves it; fallback = one-way controller.
+- RESOLVED (2026-10-14, on-device): FM-1 USB MIDI in/out verified bidirectional
+  (macOS built-in MIDI tools). Task 5 keeps full scope — no one-way fallback needed.
 - melodee emu knob elements may be canvas, not DOM — Task 3 step 3 finds out;
   fallback = dispatch synthetic pointer events at element coordinates.
