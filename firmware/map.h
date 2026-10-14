@@ -1,13 +1,17 @@
-/* fm1-ctrl control map -- compiled-in projection of a docs/maps JSON file.
+/* fm1-ctrl control map -- generated interface (see tools/map2c.py).
  *
- * v1: one map baked at build time (tools/map2c.py generates this file from the
- * JSON in Task 4; until then the melodee values are hand-copied here).
- * Runtime map switching is out of scope (spec §2).
+ * firmware/map_data.c is GENERATED from a docs/maps JSON file. These accessors
+ * hide whether a value came from the map or from a built-in default.
  */
 #ifndef MAP_H
 #define MAP_H
 #include <stdint.h>
 
-uint8_t map_encoder_cc(int idx);   /* encoder i -> CC number */
+typedef struct { uint8_t present, lo, hi; } map_led_cfg_t;
+
+uint8_t map_encoder_cc(int idx);      /* encoder i -> CC number            */
+uint8_t map_btn_note(int i);          /* transport PLAY/STOP/REC note      */
+map_led_cfg_t map_led(void);          /* LED grid CC range (present flag)  */
+uint8_t map_mirror(void);             /* key-LED note mirror enabled       */
 
 #endif

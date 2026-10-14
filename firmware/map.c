@@ -1,8 +1,23 @@
 #include "map.h"
 
-/* docs/maps/melodee.json inputs.ccs (hand-copied until map2c.py lands) */
-static const uint8_t ENC_CC[8] = { 71, 74, 84, 7, 1, 91, 93, 10 };
+/* accessors over the generated data in map_data.c (tools/map2c.py) */
 
 uint8_t map_encoder_cc(int idx) {
-    return (idx >= 0 && idx < 8) ? ENC_CC[idx] : 0;
+    extern const uint8_t MAP_ENC_CC[8];
+    return (idx >= 0 && idx < 8) ? MAP_ENC_CC[idx] : 0;
+}
+
+uint8_t map_btn_note(int i) {
+    extern const uint8_t MAP_BTN_NOTE[3];
+    return (i >= 0 && i < 3) ? MAP_BTN_NOTE[i] : 0;
+}
+
+map_led_cfg_t map_led(void) {
+    extern const map_led_cfg_t MAP_LED;
+    return MAP_LED;
+}
+
+uint8_t map_mirror(void) {
+    extern const uint8_t MAP_MIRROR;
+    return MAP_MIRROR;
 }
