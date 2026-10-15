@@ -52,6 +52,12 @@
 buttons CC 40..53 (127/0) &middot; encoders relative (64&plusmn;n) &middot; feedback: CC 0..15 &rarr; grid, notes &rarr; key LEDs</div>
 
 <div class="panel">
+  <div class="row" style="align-items:center">
+    <button id="midiBtn" class="clear" style="border:1px solid #555;color:#9be89b;padding:4px 12px">Connect WebMIDI</button>
+    <span class="muted">out</span> <select id="midiOutSel" style="background:#1c1c1c;color:#ddd;border:1px solid #444;padding:2px 6px"></select>
+    <span class="muted">in</span> <select id="midiInSel" style="background:#1c1c1c;color:#ddd;border:1px solid #444;padding:2px 6px"></select>
+    <span class="muted" id="midiState"></span>
+  </div>
   <div class="row" id="encrow"></div>
   <div class="row" id="btnrow"></div>
   <div class="keys" id="keys"></div>
@@ -98,16 +104,61 @@ const KNAME = i => { const n = KNOTE(i); const pc = n % 12;
 const log = document.getElementById("log"), count = document.getElementById("count");
 let n = 0;
 function h(b){ return b.toString(16).padStart(2,"0").toUpperCase(); }
-function emit(status, d1, d2, dir) {
+function emitLog(status, d1, d2, dir) {
   const line = document.createElement("div");
-  line.innerHTML = (dir==="in" ? '<span class="in">&larr; in </span>' : '<span>&rarr; out</span>') +
+  line.innerHTML = (dir ? '<span class="in">&larr; in </span>' : '<span>&rarr; out</span>') +
     ' <span class="hex">' + [h(status),h(d1),h(d2)].join(" ") + "</span>";
   log.appendChild(line); log.scrollTop = log.scrollHeight;
   if (++n > 500) { log.removeChild(log.firstChild); }
   count.textContent = n + " events";
-  feedback(status, d1, d2);   // both directions light LEDs: "out" = wire loopback,
-                              // "in" = host-driven (midi_recv3 runs on every rx)
 }
+function emit(status, d1, d2, dir) {
+  emitLog(status, d1, d2, dir);
+  if (!dir && outPort) outPort.send([status, d1, d2]);  // real bytes out via WebMIDI
+  if (dir !== "wire") feedback(status, d1, d2);         // panel & host demo light LEDs;
+}                                                       // device-originated "wire" only logs
+
+// ---- WebMIDI: panel actions become real MIDI events on a chosen output port ----
+let midiAcc = null, outPort = null, inPort = null;
+const midiBtn = document.getElementById("midiBtn");
+const selOut = document.getElementById("midiOutSel");
+const selIn  = document.getElementById("midiInSel");
+const midiState = document.getElementById("midiState");
+midiBtn.addEventListener("click", async () => {
+  if (!(navigator && navigator.requestMIDIAccess)) {
+    midiState.textContent = "WebMIDI unsupported (needs Chrome/Edge + https)"; return;
+  }
+  try { midiAcc = await navigator.requestMIDIAccess({ sysex: false }); }
+  catch (e) { midiState.textContent = "access denied"; return; }
+  const fill = sel => {
+    sel.innerHTML = "";
+    const off = document.createElement("option"); off.value = ""; off.textContent = "(none)";
+    sel.appendChild(off);
+  };
+  const refill = () => {
+    fill(selOut); fill(selIn);
+    for (const p of midiAcc.outputs.values()) {
+      const o = document.createElement("option"); o.value = p.id; o.textContent = p.name;
+      selOut.appendChild(o);
+    }
+    for (const p of midiAcc.inputs.values()) {
+      const o = document.createElement("option"); o.value = p.id; o.textContent = p.name;
+      selIn.appendChild(o);
+    }
+  };
+  refill();
+  midiAcc.onstatechange = refill;
+  midiBtn.textContent = "WebMIDI \u2713";
+  selOut.onchange = () => { outPort = midiAcc.outputs.get(selOut.value) || null; };
+  selIn.onchange = () => {
+    if (inPort) inPort.onmidimessage = null;
+    inPort = midiAcc.inputs.get(selIn.value) || null;
+    if (inPort) inPort.onmidimessage = ev => {      // bytes from the device/hub
+      const d = Array.from(ev.data);
+      emitLog(d[0], d[1], d.length > 2 ? d[2] : 0, "wire");
+    };
+  };
+});
 
 // ---- firmware/midi_io.c routing, mirrored for the loopback tab ----
 const grid = new Array(GRID_ROWS).fill(0);
