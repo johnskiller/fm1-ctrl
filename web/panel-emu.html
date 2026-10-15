@@ -118,25 +118,30 @@ function emit(status, d1, d2, dir) {
   if (dir !== "wire") feedback(status, d1, d2);         // panel & host demo light LEDs;
 }                                                       // device-originated "wire" only logs
 
-// ---- WebMIDI: panel actions become real MIDI events on a chosen output port ----
-let midiAcc = null, outPort = null, inPort = null;
+// ---- WebMIDI: auto-connect on first gesture; panel actions become real events ----
+let outPort = null, inPort = null, midiAcc = null;
 const midiBtn = document.getElementById("midiBtn");
 const selOut = document.getElementById("midiOutSel");
 const selIn  = document.getElementById("midiInSel");
 const midiState = document.getElementById("midiState");
-midiBtn.addEventListener("click", async () => {
+function hookIn() {
+  if (inPort) inPort.onmidimessage = null;
+  inPort = midiAcc.inputs.get(selIn.value) || null;
+  if (inPort) inPort.onmidimessage = ev => {
+    const d = Array.from(ev.data);
+    emitLog(d[0], d[1], d.length > 2 ? d[2] : 0, "wire");
+  };
+}
+async function midiSetup() {
+  if (midiAcc) return;
   if (!(navigator && navigator.requestMIDIAccess)) {
     midiState.textContent = "WebMIDI unsupported (needs Chrome/Edge + https)"; return;
   }
   try { midiAcc = await navigator.requestMIDIAccess({ sysex: false }); }
   catch (e) { midiState.textContent = "access denied"; return; }
-  const fill = sel => {
-    sel.innerHTML = "";
-    const off = document.createElement("option"); off.value = ""; off.textContent = "(none)";
-    sel.appendChild(off);
-  };
   const refill = () => {
-    fill(selOut); fill(selIn);
+    const ov = selOut.value, iv = selIn.value;
+    selOut.innerHTML = ""; selIn.innerHTML = "";
     for (const p of midiAcc.outputs.values()) {
       const o = document.createElement("option"); o.value = p.id; o.textContent = p.name;
       selOut.appendChild(o);
@@ -145,20 +150,24 @@ midiBtn.addEventListener("click", async () => {
       const o = document.createElement("option"); o.value = p.id; o.textContent = p.name;
       selIn.appendChild(o);
     }
+    if (ov && midiAcc.outputs.has(ov)) selOut.value = ov;
+    if (iv && midiAcc.inputs.has(iv)) selIn.value = iv;
+    if (!selOut.value && selOut.options.length) selOut.selectedIndex = 0;
+    if (!selIn.value && selIn.options.length) selIn.selectedIndex = 0;
+    outPort = midiAcc.outputs.get(selOut.value) || null;
+    hookIn();
+    midiState.textContent = "out: " + (outPort ? outPort.name : "none");
   };
   refill();
   midiAcc.onstatechange = refill;
   midiBtn.textContent = "WebMIDI \u2713";
-  selOut.onchange = () => { outPort = midiAcc.outputs.get(selOut.value) || null; };
-  selIn.onchange = () => {
-    if (inPort) inPort.onmidimessage = null;
-    inPort = midiAcc.inputs.get(selIn.value) || null;
-    if (inPort) inPort.onmidimessage = ev => {      // bytes from the device/hub
-      const d = Array.from(ev.data);
-      emitLog(d[0], d[1], d.length > 2 ? d[2] : 0, "wire");
-    };
-  };
-});
+  selOut.onchange = () => { outPort = midiAcc.outputs.get(selOut.value) || null;
+    midiState.textContent = "out: " + (outPort ? outPort.name : "none"); };
+  selIn.onchange = hookIn;
+}
+midiBtn.addEventListener("click", midiSetup);
+document.addEventListener("pointerdown", () => midiSetup(), { once: true });
+document.addEventListener("keydown",     () => midiSetup(), { once: true });
 
 // ---- firmware/midi_io.c routing, mirrored for the loopback tab ----
 const grid = new Array(GRID_ROWS).fill(0);
