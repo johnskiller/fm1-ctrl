@@ -39,6 +39,7 @@
          font-size:12px; white-space:pre; }
   .hex { color:#9be89b; }
   .in  { color:#7ab8ff; }
+  .echo { color:#666; }
   .muted { color:var(--dim); }
   button.clear, select { background:#1c1c1c; border:1px solid #444; color:#ddd; font:inherit;
                  padding:2px 10px; border-radius:4px; cursor:pointer; }
@@ -48,7 +49,7 @@
 <body>
 <h1>fm1-ctrl wasm emulator</h1>
 <div class="sub">the firmware's own C (keyscan &middot; encoders &middot; leds &middot; map &middot; midi_io) as WebAssembly &middot;
-same bytes the FM-1 would send &middot; map = melodee.json v0.2 &middot; <span id="status">loading wasm&hellip;</span></div>
+same bytes the FM-1 would send; external app sends land as <i>in</i>, own-bus echoes are tagged <i>echo</i> &middot; map = melodee.json v0.2 &middot; <span id="status">loading wasm&hellip;</span></div>
 
 <div class="panel">
   <div class="row">
@@ -94,7 +95,10 @@ let n = 0;
 function h(b){ return b.toString(16).padStart(2,"0").toUpperCase(); }
 function emitLog(status, d1, d2, dir) {
   const line = document.createElement("div");
-  line.innerHTML = (dir ? '<span class="in">&larr; in </span>' : '<span>&rarr; out</span>') +
+  const tag = dir === "echo" ? '<span class="echo">&larr; echo</span>'
+            : dir ? '<span class="in">&larr; in </span>'
+            : '<span>&rarr; out</span>';
+  line.innerHTML = tag +
     ' <span class="hex">' + [h(status),h(d1),h(d2)].join(" ") + "</span>";
   logEl.appendChild(line); logEl.scrollTop = logEl.scrollHeight;
   if (++n > 500) { logEl.removeChild(logEl.firstChild); }
@@ -134,7 +138,7 @@ async function boot() {
       while ((msg = M.web_out_get()) >= 0) {
         const st = msg & 255, d1 = (msg >> 8) & 255, d2 = (msg >> 16) & 255;
         emitLog(st, d1, d2);
-        if (outPort) outPort.send([st, d1, d2]);   // real bytes out
+        if (outPort) { outPort.send([st, d1, d2]); noteSent(st, d1, d2); }
       }
       paintGrid();
       paintKeyLeds(M.web_lit_keys());
@@ -192,6 +196,16 @@ for (let i = 0; i < NKEYS; i++) {
 
 // ---- WebMIDI ----
 let outPort = null, inPort = null, midiAcc = null;
+// IAC/loopback echo suppression: messages we just sent coming back on the same bus
+const sentLog = [];
+function noteSent(st, d1, d2) {
+  sentLog.push({ t: performance.now(), st, d1, d2 });
+  if (sentLog.length > 24) sentLog.shift();
+}
+function isEcho(st, d1, d2) {
+  const now = performance.now();
+  return sentLog.some(s => s.st === st && s.d1 === d1 && s.d2 === d2 && now - s.t < 200);
+}
 const midiBtn = document.getElementById("midiBtn");
 const selOut = document.getElementById("midiOutSel");
 const selIn  = document.getElementById("midiInSel");
@@ -235,8 +249,10 @@ function hookIn() {
   inPort = midiAcc.inputs.get(selIn.value) || null;
   if (inPort) inPort.onmidimessage = ev => {
     const d = Array.from(ev.data);
+    const d2 = d.length > 2 ? d[2] : 0;
+    if (isEcho(d[0], d[1], d2)) { emitLog(d[0], d[1], d2, "echo"); return; }
     if (d.length >= 3 && M) M.web_midi_in(d[0], d[1], d[2]);  // into the firmware
-    emitLog(d[0], d[1], d.length > 2 ? d[2] : 0, "wire");
+    emitLog(d[0], d[1], d2, "wire");
   };
 }
 midiBtn.addEventListener("click", midiSetup);
