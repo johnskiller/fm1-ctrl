@@ -1,0 +1,234 @@
+<!doctype html>
+<!-- fm1-ctrl wasm emulator: the firmware's own modules (keyscan/encoders/leds/map/
+     midi_io/ctrl_glue) running as WebAssembly - the same bytes the device would send.
+     Page after Felucca's web/emu and melodee's web/emu/index.html (GPL-3.0-only).
+     Map: docs/maps/melodee.json v0.2. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>fm1-ctrl wasm emulator</title>
+<style>
+  :root { --led:#ff3b30; --ledoff:#3a1a18; --txt:#c8c8c8; --dim:#7a7a7a; }
+  body { background:#141414; color:var(--txt); font:14px/1.45 ui-monospace,Menlo,Consolas,monospace;
+         margin:0; padding:16px; }
+  h1 { font-size:16px; margin:0 0 4px; }
+  .sub { color:var(--dim); margin-bottom:12px; }
+  .panel { border:1px solid #333; border-radius:10px; padding:14px; background:#1c1c1c; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px; align-items:center; }
+  .enc { width:64px; text-align:center; }
+  .knob { width:56px; height:56px; border-radius:50%; border:2px solid #444; background:#262626;
+          position:relative; margin:0 auto; cursor:ns-resize; user-select:none; touch-action:none; }
+  .knob::after { content:""; position:absolute; left:50%; top:50%; width:3px; height:22px;
+          background:#9be89b; transform-origin:50% 0%; }
+  .lbl { font-size:10px; color:var(--dim); margin-top:4px; letter-spacing:.5px; }
+  .val { font-size:10px; color:#9be89b; }
+  .btn { min-width:58px; padding:8px 6px; border:1px solid #444; border-radius:6px; background:#262626;
+         color:var(--txt); cursor:pointer; text-align:center; font-size:11px; user-select:none; }
+  .btn.on { background:#5a2a26; border-color:var(--led); color:#ffd7d4; }
+  .keys { display:grid; grid-template-columns:repeat(14,1fr); gap:4px; margin-top:6px; }
+  .key { border:1px solid #444; border-radius:0 0 5px 5px; background:#222; color:var(--dim);
+         text-align:center; padding:14px 0 4px; font-size:10px; cursor:pointer; user-select:none; }
+  .key.blk { background:#111; color:#666; }
+  .key.on { background:#5a2a26; color:#ffd7d4; border-color:var(--led); }
+  .grid { display:grid; grid-template-columns:repeat(7,18px); gap:4px; }
+  .cell { width:18px; height:18px; border-radius:3px; background:var(--ledoff); }
+  .cell.on { background:var(--led); box-shadow:0 0 6px var(--led); }
+  h2 { font-size:13px; color:var(--dim); margin:16px 0 6px; font-weight:normal; }
+  .cols { display:flex; gap:28px; flex-wrap:wrap; }
+  #log { height:150px; overflow-y:auto; border:1px solid #333; padding:6px 10px; background:#101010;
+         font-size:12px; white-space:pre; }
+  .hex { color:#9be89b; }
+  .in  { color:#7ab8ff; }
+  .muted { color:var(--dim); }
+  button.clear, select { background:#1c1c1c; border:1px solid #444; color:#ddd; font:inherit;
+                 padding:2px 10px; border-radius:4px; cursor:pointer; }
+  #status { color:#9be89b; }
+</style>
+</head>
+<body>
+<h1>fm1-ctrl wasm emulator</h1>
+<div class="sub">the firmware's own C (keyscan &middot; encoders &middot; leds &middot; map &middot; midi_io) as WebAssembly &middot;
+same bytes the FM-1 would send &middot; map = melodee.json v0.2 &middot; <span id="status">loading wasm&hellip;</span></div>
+
+<div class="panel">
+  <div class="row">
+    <button id="midiBtn" class="clear" style="color:#9be89b">Connect WebMIDI</button>
+    <span class="muted">out</span> <select id="midiOutSel"></select>
+    <span class="muted">in</span> <select id="midiInSel"></select>
+    <span class="muted" id="midiState"></span>
+  </div>
+  <div class="row" id="encrow"></div>
+  <div class="row" id="btnrow"></div>
+  <div class="keys" id="keys"></div>
+</div>
+
+<h2>LED feedback (leds.c state, as midi_io routes MIDI-in)</h2>
+<div class="cols">
+  <div>
+    <div class="lbl" style="margin-bottom:6px">5&times;7 GRID &mdash; CC 0..15 map to row bitmap</div>
+    <div class="grid" id="grid"></div>
+  </div>
+  <div>
+    <div class="lbl" style="margin-bottom:6px">KEY MIRROR &mdash; note on/off echoes on the keys above</div>
+    <div class="muted" id="mirrorNote">-</div>
+  </div>
+</div>
+
+<h2>MIDI byte stream <button class="clear" onclick="logEl.textContent='';n=0">clear</button>
+  <span class="muted" id="count"></span></h2>
+<div id="log"></div>
+
+<script>
+"use strict";
+const NOTE_KEY0 = 53, NKEYS = 27, NENC = 7;
+const BTN_NAMES = ["FX","SEL","ENV","LFO","EDIT","GLO","HOME","SAVE","ARP","SEQ","PLAY","REC","OCT-","OCT+"];
+const ENC_NAMES = ["SELECT","ALGO","PRESETS","K1","K2","K3","K4"];
+const BLACK = [1,3,6,8,10];
+const KNOTE = i => NOTE_KEY0 + i;
+const KNAME = i => { const pc = KNOTE(i) % 12;
+  const names = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  return names[pc] + (Math.floor(KNOTE(i)/12) - 1); };
+
+const logEl = document.getElementById("log"), count = document.getElementById("count");
+let n = 0;
+function h(b){ return b.toString(16).padStart(2,"0").toUpperCase(); }
+function emitLog(status, d1, d2, dir) {
+  const line = document.createElement("div");
+  line.innerHTML = (dir ? '<span class="in">&larr; in </span>' : '<span>&rarr; out</span>') +
+    ' <span class="hex">' + [h(status),h(d1),h(d2)].join(" ") + "</span>";
+  logEl.appendChild(line); logEl.scrollTop = logEl.scrollHeight;
+  if (++n > 500) { logEl.removeChild(logEl.firstChild); }
+  count.textContent = n + " events";
+}
+
+const gridEl = [];
+(function(){ const g = document.getElementById("grid");
+  for (let i = 0; i < 35; i++) { const c = document.createElement("div");
+    c.className = "cell"; g.appendChild(c); gridEl.push(c); } })();
+let lastGrid = -1;
+function paintGrid() {
+  for (let row = 0; row < 5; row++) {
+    const bits = M.web_grid_row(row);
+    for (let col = 0; col < 7; col++)
+      gridEl[row*7+col].classList.toggle("on", !!(bits & (1<<col)));
+  }
+}
+const keyEls = [];
+function paintKeyLeds(mask) {
+  for (let k = 0; k < NKEYS; k++)
+    keyEls[k].classList.toggle("on", !!(mask & (1<<k)));
+}
+
+let M = null;
+async function boot() {
+  const status = document.getElementById("status");
+  try {
+    const bytes = await (await fetch("fm1ctrl.wasm")).arrayBuffer();
+    const { instance } = await WebAssembly.instantiate(bytes, {});
+    M = instance.exports;
+    M.web_boot();
+    status.textContent = "wasm \u2713 (firmware C live)";
+    setInterval(() => {                            // TIMER5 sampled ~1 kHz x2 frames
+      for (let i = 0; i < 2; i++) M.web_tick();
+      let msg;
+      while ((msg = M.web_out_get()) >= 0) {
+        const st = msg & 255, d1 = (msg >> 8) & 255, d2 = (msg >> 16) & 255;
+        emitLog(st, d1, d2);
+        if (outPort) outPort.send([st, d1, d2]);   // real bytes out
+      }
+      paintGrid();
+      paintKeyLeds(M.web_lit_keys());
+    }, 4);
+  } catch (e) { status.textContent = "wasm load failed: " + e.message; }
+}
+
+// ---- panel controls -> wasm inputs ----
+const encrow = document.getElementById("encrow");
+const encState = [];
+ENC_NAMES.forEach((name, i) => {
+  const wrap = document.createElement("div"); wrap.className = "enc";
+  const knob = document.createElement("div"); knob.className = "knob";
+  const lbl = document.createElement("div"); lbl.className = "lbl"; lbl.textContent = name;
+  const val = document.createElement("div"); val.className = "val"; val.textContent = "0\u00d7";
+  wrap.append(knob, lbl, val); encrow.appendChild(wrap);
+  const st = { acc:0, turns:0, y:0 };
+  encState.push(st);
+  knob.addEventListener("pointerdown", e => { st.y = e.clientY; knob.setPointerCapture(e.pointerId); });
+  knob.addEventListener("pointermove", e => {
+    if (!knob.hasPointerCapture(e.pointerId)) return;
+    const dy = st.y - e.clientY; st.y = e.clientY;
+    st.acc += dy; knob.style.transform = `rotate(${st.acc*4}deg)`;
+    while (Math.abs(st.acc) >= 6) {
+      const step = st.acc > 0 ? 1 : -1;
+      st.acc -= step * 6;
+      if (M) M.web_enc(i, step);
+      st.turns += step; val.textContent = (st.turns>0?"+":"") + st.turns + "\u00d7";
+    }
+  });
+});
+
+const btnrow = document.getElementById("btnrow");
+BTN_NAMES.forEach((name, i) => {
+  const b = document.createElement("div"); b.className = "btn"; b.textContent = name;
+  const set = on => { b.classList.toggle("on", on); if (M) M.web_button(i, on ? 1 : 0); };
+  b.addEventListener("pointerdown", () => set(true));
+  b.addEventListener("pointerup",   () => set(false));
+  b.addEventListener("pointerleave", e => { if (b.classList.contains("on")) set(false); });
+  btnrow.appendChild(b);
+});
+
+const keysEl = document.getElementById("keys");
+for (let i = 0; i < NKEYS; i++) {
+  const k = document.createElement("div");
+  k.className = "key" + (BLACK.includes(KNOTE(i)%12) ? " blk" : "");
+  k.textContent = KNAME(i);
+  const on  = () => { k.classList.add("on");  if (M) M.web_key(i, 1); };
+  const off = () => { k.classList.remove("on"); if (M) M.web_key(i, 0); };
+  k.addEventListener("pointerdown", on);
+  k.addEventListener("pointerup", off);
+  k.addEventListener("pointerleave", e => { if (k.classList.contains("on")) off(); });
+  keysEl.appendChild(k); keyEls.push(k);
+}
+
+// ---- WebMIDI ----
+let outPort = null, inPort = null;
+const midiBtn = document.getElementById("midiBtn");
+const selOut = document.getElementById("midiOutSel");
+const selIn  = document.getElementById("midiInSel");
+const midiState = document.getElementById("midiState");
+midiBtn.addEventListener("click", async () => {
+  if (!(navigator && navigator.requestMIDIAccess)) {
+    midiState.textContent = "WebMIDI unsupported"; return;
+  }
+  let midiAcc;
+  try { midiAcc = await navigator.requestMIDIAccess({ sysex: false }); }
+  catch (e) { midiState.textContent = "access denied"; return; }
+  const refill = () => {
+    selOut.innerHTML = ""; selIn.innerHTML = "";
+    for (const p of midiAcc.outputs.values()) {
+      const o = document.createElement("option"); o.value = p.id; o.textContent = p.name;
+      selOut.appendChild(o);
+    }
+    for (const p of midiAcc.inputs.values()) {
+      const o = document.createElement("option"); o.value = p.id; o.textContent = p.name;
+      selIn.appendChild(o);
+    }
+  };
+  refill();
+  midiAcc.onstatechange = refill;
+  midiBtn.textContent = "WebMIDI \u2713";
+  selOut.onchange = () => { outPort = midiAcc.outputs.get(selOut.value) || null; };
+  selIn.onchange = () => {
+    if (inPort) inPort.onmidimessage = null;
+    inPort = midiAcc.inputs.get(selIn.value) || null;
+    if (inPort) inPort.onmidimessage = ev => {
+      const d = Array.from(ev.data);
+      if (d.length >= 3 && M) M.web_midi_in(d[0], d[1], d[2]);  // into the firmware
+      emitLog(d[0], d[1], d.length > 2 ? d[2] : 0, "wire");
+    };
+  };
+});
+boot();
+</script>
+</body>
+</html>
