@@ -71,6 +71,7 @@ def generate(map_dict, map_path):
         "const uint8_t MAP_ENC_CC[MAP_NENC] = { %s };" % ", ".join(map(str, enc)),
         "const uint8_t MAP_BTN_CC[MAP_NBTN] = { %s };" % ", ".join(map(str, btn)),
         "const map_led_cfg_t MAP_LED = { %d, %u, %u };" % (present, lo, hi),
+        "const uint8_t MAP_BTN_LED0 = %u;" % (outputs.get("btnLeds", {}).get("cc", [54, 67])[0]),
         "const uint8_t MAP_MIRROR = %d;" % mirror,
         "",
     ])

@@ -1,7 +1,7 @@
 
 import fs from 'fs';
 (async () => {
-  const bytes = fs.readFileSync('new URL('../../build/emu/fm1ctrl.wasm', import.meta.url)');
+  const bytes = fs.readFileSync(new URL('../../build/emu/fm1ctrl.wasm', import.meta.url));
   const { instance } = await WebAssembly.instantiate(bytes, {});
   const M = instance.exports;
   const A = (c, m) => { if (!c) { console.error('FAIL:', m); process.exitCode = 1; } else console.log('ok:', m); };
@@ -40,5 +40,10 @@ import fs from 'fs';
   // 5. MIDI-in note 60 on -> key LED idx 7 (60-53)
   M.web_midi_in(0x90, 60, 100);
   A((M.web_lit_keys() >> 7) & 1, 'midi-in note60 -> key LED 7 lit');
+  // 6. button-LED feedback: CC 54 (FX) on -> web_btn_leds bit0; off clears
+  M.web_midi_in(0xB0, 54, 0x7F); M.web_tick();
+  A(M.web_btn_leds() === 1, 'CC 54 lights FX LED');
+  M.web_midi_in(0xB0, 54, 0); M.web_tick();
+  A(M.web_btn_leds() === 0, 'CC 54 value 0 clears FX LED');
   console.log('WASM EMU TESTS DONE');
 })().catch(e => { console.error(e); process.exit(1); });

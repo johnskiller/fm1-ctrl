@@ -16,5 +16,6 @@ uint8_t map_encoder_cc(int idx);      /* encoder i -> CC number (0..6)      */
 uint8_t map_btn_cc(int i);            /* button i -> CC number (0..13)      */
 map_led_cfg_t map_led(void);          /* LED grid CC range (present flag)   */
 uint8_t map_mirror(void);             /* key-LED note mirror enabled        */
+uint8_t map_btn_led0(void);           /* button-LED feedback base CC        */
 
 #endif

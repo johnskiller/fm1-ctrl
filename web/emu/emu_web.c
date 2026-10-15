@@ -94,6 +94,15 @@ static uint8_t  web_grid[16];
 static uint32_t web_keyled;
 /* live readback from leds.c (the latched copies stay for the tick path) */
 EXPORT uint32_t web_grid_row(uint32_t r) { return r < 16u ? leds_grid_get((int)r) : 0; }
+EXPORT uint32_t web_btn_leds(void)
+{
+    extern uint8_t leds_btn_get(int i);
+    uint32_t k, m = 0;
+    for (k = 0; k < NBUTTONS; k++)
+        m |= (uint32_t)leds_btn_get((int)k) << k;
+    return m;
+}
+
 EXPORT uint32_t web_lit_keys(void)
 {
     uint32_t k, m = 0;

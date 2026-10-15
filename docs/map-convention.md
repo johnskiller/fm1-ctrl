@@ -28,7 +28,8 @@ serve them).
   },
   "outputs": {
     "ledGrid":  { "cc": [0, 15],  "mode": "bitmap" },
-    "keyLeds":  { "noteOn": "mirror" }
+    "keyLeds":  { "noteOn": "mirror" },
+    "btnLeds":  { "cc": [54, 67], "mode": "one-cc-per-button", "order": "panel" }
   }
 }
 ```
@@ -47,6 +48,9 @@ serve them).
 - `outputs.ledGrid`: a CC range carries the LED bitmap (CC 0–15 = 16 rows ×
   8 bits = 128 cells; FM-1 grid is 5×7 + keys, plenty).
 - `outputs.keyLeds: "mirror"` = note on/off lights the physical key LED.
+- `outputs.btnLeds`: one CC per button, CC 54..67 in panel order (value != 0 = on).
+  With grid (0..15) + key mirror (notes 53..79) + buttons (54..67) the emu can
+  reach all 41 physical LEDs: 27 keys + 12 command buttons + OCT-/OCT+.
 - Anything absent from the map is ignored by the shim — partial maps are fine.
 
 ## Firmware side

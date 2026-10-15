@@ -17,6 +17,11 @@ map_led_cfg_t map_led(void) {
     return MAP_LED;
 }
 
+uint8_t map_btn_led0(void) {
+    extern const uint8_t MAP_BTN_LED0;
+    return MAP_BTN_LED0;
+}
+
 uint8_t map_mirror(void) {
     extern const uint8_t MAP_MIRROR;
     return MAP_MIRROR;

@@ -5,4 +5,5 @@
 const uint8_t MAP_ENC_CC[MAP_NENC] = { 20, 21, 22, 23, 24, 25, 26 };
 const uint8_t MAP_BTN_CC[MAP_NBTN] = { 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53 };
 const map_led_cfg_t MAP_LED = { 0, 0, 0 };
+const uint8_t MAP_BTN_LED0 = 54;
 const uint8_t MAP_MIRROR = 1;

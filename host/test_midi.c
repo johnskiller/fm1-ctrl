@@ -120,6 +120,17 @@ int main(void) {
     assert(g(2).b[0] == 0xB0 && g(2).b[1] == 20 && g(2).b[2] == 0x41);
     assert(leds_grid_get(5) == 0x3C);
 
+    /* T11: button-LED feedback (melodee.json outputs.btnLeds, CC 54..67).
+     * CC 54 = button 0 (FX): nonzero lights it, zero clears. Out of range ignored. */
+    ctrl_midi_in3(0xB0, 54, 0x7F);
+    assert(leds_btn_get(0) == 1);
+    ctrl_midi_in3(0xB0, 67, 1);
+    assert(leds_btn_get(13) == 1);
+    ctrl_midi_in3(0xB0, 54, 0);
+    assert(leds_btn_get(0) == 0);
+    ctrl_midi_in3(0xB0, 68, 0x7F);   /* beyond the 14-button window: no crash, no bit */
+    assert(leds_btn_get(14) == 0);
+
     printf("ALL HOST TESTS PASSED\n");
     return 0;
 }
