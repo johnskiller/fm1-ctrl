@@ -26,6 +26,8 @@
   .val { font-size:10px; color:#9be89b; }
   .btn { min-width:58px; padding:8px 6px; border:1px solid #444; border-radius:6px; background:#262626;
          color:var(--txt); cursor:pointer; text-align:center; font-size:11px; user-select:none; }
+  .btn.held { background:#3a5a3a; }
+  .btn.on { box-shadow:0 0 8px 2px #ff5050, inset 0 0 4px #ff8080; }
   .btn.on { background:#5a2a26; border-color:var(--led); color:#ffd7d4; }
   .keys { display:grid; grid-template-columns:repeat(14,1fr); gap:4px; margin-top:6px; }
   .key { border:1px solid #444; border-radius:0 0 5px 5px; background:#222; color:var(--dim);
@@ -92,6 +94,7 @@ const NENC = 7;
 const ENC_STEP = 1;              // firmware/encoders.c: 1 detent = +-1 around 64
 const GRID_ROWS = 16;            // leds.c (CC 0..15)
 
+const BTN_LED0 = 54;  // melodee.json outputs.btnLeds (one CC per button)
 const BTN_NAMES = ["FX","SEL","ENV","LFO","EDIT","GLO","HOME","SAVE","ARP","SEQ","PLAY","REC","OCT-","OCT+"];
 const ENC_NAMES = ["SELECT","ALGO","PRESETS","K1","K2","K3","K4"];
 const BLACK = [1,3,6,8,10];      // semitone classes within an octave
@@ -143,7 +146,9 @@ function hookIn() {
   if (inPort) inPort.onmidimessage = ev => {
     const d = Array.from(ev.data);
     const d2 = d.length > 2 ? d[2] : 0;
-    emitLog(d[0], d[1], d2, isEcho(d[0], d[1], d2) ? "echo" : "wire");
+    const echo = isEcho(d[0], d[1], d2);
+    emitLog(d[0], d[1], d2, echo ? "echo" : "wire");
+    if (!echo) feedback(d[0], d[1], d2);   // external MIDI drives LEDs too
   };
 }
 async function midiSetup() {
@@ -203,6 +208,9 @@ function feedback(st, d1, d2) {
   const t = st & 0xF0;
   if (t === 0xB0) {                        // leds_on_cc
     if (d1 < GRID_ROWS) { grid[d1] = d2; paintGrid(); }
+    else if (d1 >= BTN_LED0 && d1 < BTN_LED0 + BTN_NAMES.length) {
+      btnEls[d1 - BTN_LED0].classList.toggle("on", d2 !== 0);
+    }
   } else if (t === 0x90 || t === 0x80) {   // leds_on_note (vel-0 on = off)
     const on = (t === 0x90) && (d2 !== 0);
     const ki = d1 - NOTE_KEY0;
@@ -241,14 +249,16 @@ ENC_NAMES.forEach((name, i) => {
 
 // ---- buttons: CC press 127 / release 0 ----
 const btnrow = document.getElementById("btnrow");
+const btnEls = [];
 BTN_NAMES.forEach((name, i) => {
   const cc = BTN_CC0 + i;
   const b = document.createElement("div"); b.className = "btn"; b.textContent = name;
-  const set = on => { b.classList.toggle("on", on); emit(0xB0, cc, on ? 127 : 0); };
+  const set = on => { b.classList.toggle("held", on); emit(0xB0, cc, on ? 127 : 0); };
   b.addEventListener("pointerdown", () => set(true));
   b.addEventListener("pointerup",   () => set(false));
-  b.addEventListener("pointerleave",e => { if (b.classList.contains("on")) set(false); });
+  b.addEventListener("pointerleave",e => { if (b.classList.contains("held")) set(false); });
   btnrow.appendChild(b);
+  btnEls.push(b);
 });
 
 // ---- keys: note on/off, velocity 100 (firmware v1 constant) ----

@@ -142,6 +142,7 @@ async function boot() {
       }
       paintGrid();
       paintKeyLeds(M.web_lit_keys());
+    paintBtnLeds(M.web_btn_leds());
     }, 4);
   } catch (e) { status.textContent = "wasm load failed: " + e.message; }
 }
@@ -172,14 +173,20 @@ ENC_NAMES.forEach((name, i) => {
 });
 
 const btnrow = document.getElementById("btnrow");
+const btnEls = [];
 BTN_NAMES.forEach((name, i) => {
   const b = document.createElement("div"); b.className = "btn"; b.textContent = name;
-  const set = on => { b.classList.toggle("on", on); if (M) M.web_button(i, on ? 1 : 0); };
+  const set = on => { b.classList.toggle("held", on); if (M) M.web_button(i, on ? 1 : 0); };
   b.addEventListener("pointerdown", () => set(true));
   b.addEventListener("pointerup",   () => set(false));
-  b.addEventListener("pointerleave", e => { if (b.classList.contains("on")) set(false); });
+  b.addEventListener("pointerleave", e => { if (b.classList.contains("held")) set(false); });
   btnrow.appendChild(b);
+  btnEls.push(b);
 });
+function paintBtnLeds(mask) {
+  for (let k = 0; k < BTN_NAMES.length; k++)
+    btnEls[k].classList.toggle("on", !!(mask & (1<<k)));
+}
 
 const keysEl = document.getElementById("keys");
 for (let i = 0; i < NKEYS; i++) {
