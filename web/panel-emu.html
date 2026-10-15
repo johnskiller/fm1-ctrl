@@ -41,6 +41,7 @@
          font-size:12px; white-space:pre; }
   .hex { color:#9be89b; }
   .in  { color:#7ab8ff; }
+  .echo { color:#666; }
   .muted { color:var(--dim); }
   button.clear { background:none; border:1px solid #444; color:var(--dim); font:inherit;
                  padding:2px 10px; border-radius:4px; cursor:pointer; }
@@ -106,7 +107,10 @@ let n = 0;
 function h(b){ return b.toString(16).padStart(2,"0").toUpperCase(); }
 function emitLog(status, d1, d2, dir) {
   const line = document.createElement("div");
-  line.innerHTML = (dir ? '<span class="in">&larr; in </span>' : '<span>&rarr; out</span>') +
+  const tag = dir === "echo" ? '<span class="echo">&larr; echo</span>'
+            : dir ? '<span class="in">&larr; in </span>'
+            : '<span>&rarr; out</span>';
+  line.innerHTML = tag +
     ' <span class="hex">' + [h(status),h(d1),h(d2)].join(" ") + "</span>";
   log.appendChild(line); log.scrollTop = log.scrollHeight;
   if (++n > 500) { log.removeChild(log.firstChild); }
@@ -114,12 +118,21 @@ function emitLog(status, d1, d2, dir) {
 }
 function emit(status, d1, d2, dir) {
   emitLog(status, d1, d2, dir);
-  if (!dir && outPort) outPort.send([status, d1, d2]);  // real bytes out via WebMIDI
+  if (!dir && outPort) { outPort.send([status, d1, d2]); noteSent(status, d1, d2); }
   if (dir !== "wire") feedback(status, d1, d2);         // panel & host demo light LEDs;
 }                                                       // device-originated "wire" only logs
 
 // ---- WebMIDI: auto-connect on first gesture; panel actions become real events ----
 let outPort = null, inPort = null, midiAcc = null;
+const sentLog = [];
+function noteSent(st, d1, d2) {
+  sentLog.push({ t: performance.now(), st, d1, d2 });
+  if (sentLog.length > 24) sentLog.shift();
+}
+function isEcho(st, d1, d2) {
+  const now = performance.now();
+  return sentLog.some(s => s.st === st && s.d1 === d1 && s.d2 === d2 && now - s.t < 200);
+}
 const midiBtn = document.getElementById("midiBtn");
 const selOut = document.getElementById("midiOutSel");
 const selIn  = document.getElementById("midiInSel");
@@ -129,7 +142,8 @@ function hookIn() {
   inPort = midiAcc.inputs.get(selIn.value) || null;
   if (inPort) inPort.onmidimessage = ev => {
     const d = Array.from(ev.data);
-    emitLog(d[0], d[1], d.length > 2 ? d[2] : 0, "wire");
+    const d2 = d.length > 2 ? d[2] : 0;
+    emitLog(d[0], d[1], d2, isEcho(d[0], d[1], d2) ? "echo" : "wire");
   };
 }
 async function midiSetup() {
