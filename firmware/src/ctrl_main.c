@@ -80,9 +80,16 @@ static void ctrl_poll_encoders(void)
     }
 }
 
-/* MASTER pot: 14-bit CC pair 7 (msb) / 39 (lsb), on a >=2 count change, <=200 Hz
- * (RemoteFM1 PROTOCOL section 4; melodee takes CC 27 as its own master, kept
- * separate on purpose -- this is the physical pot, always sent). */
+/* MASTER pot (PB6, SARADC ch4 -- NOT a hardware volume path: every FM-1 firmware
+ * multiplies the mix by it in software; x0x reads it and does out *= vol in
+ * engine.c, and nothing in fm1_audio.h writes a codec volume register).
+ *
+ * Sent two ways, both on channel 1:
+ *   CC 27        adc >> 3   -- what the Felucca/Melodee web emus call MASTER
+ *                             (web/emu/worklet.js: MASTER_CC = 27)
+ *   CC 7 / 39    14-bit     -- RemoteFM1 PROTOCOL section 4, for DAWs
+ * The value is the raw ADC, not a curve: the receiving firmware applies its own
+ * (x0x: master_q12 = (adc>>3)^2), so squaring here would square it twice. */
 static void ctrl_poll_master(void)
 {
     static int32_t last = -1;
@@ -90,12 +97,13 @@ static void ctrl_poll_master(void)
     if (adc < 0)
         return;
     if (last >= 0 && adc - last < 2 && last - adc < 2)
-        return;
+        return;                          /* >= 2 counts: the pot's own noise floor */
     last = adc;
+    midi_emit3(0xB0, 27, (uint8_t)(adc >> 3));
     {
         uint32_t v14 = (uint32_t)adc << 4;
-        midi_emit3(0xBE, 7,  (uint8_t)(v14 >> 7));
-        midi_emit3(0xBE, 39, (uint8_t)(v14 & 0x7F));
+        midi_emit3(0xB0, 7,  (uint8_t)(v14 >> 7));
+        midi_emit3(0xB0, 39, (uint8_t)(v14 & 0x7F));
     }
 }
 

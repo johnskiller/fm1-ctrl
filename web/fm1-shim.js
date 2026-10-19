@@ -96,16 +96,17 @@
         log("encoder " + role + " " + (n > 0 ? "+" : "") + n);
         return;
       }
-      if (a === MASTER_CC) {                            // master, 7-bit fallback
-        state.master = Math.round(b * 1023 / 127);
+      if (a === MASTER_CC) {                            // 7-bit, CC 27 (emu convention)
+        state.master = Math.round(b * 1023 / 127);       // worklet.js midiKnob, verbatim
         push({ type: "master", value: state.master });
         log("master " + state.master);
         return;
       }
-      if (a === 7 || a === 39) {                        // 14-bit master pair (CC 7/39)
-        var msb = (state.master >> 7) & 0x7F, lsb = state.master & 0x7F;
-        if (a === 7) msb = b; else lsb = b;
-        state.master = Math.round(((msb << 7) | lsb) * 1023 / 16383);
+      if (a === 7 || a === 39) {                        // 14-bit pair, CC 7/39
+        var msb = state.m14msb || 0, lsb2 = state.m14lsb || 0;
+        if (a === 7) msb = b; else lsb2 = b;
+        state.m14msb = msb; state.m14lsb = lsb2;
+        state.master = Math.round(((msb << 7) | lsb2) * 1023 / 16383);
         push({ type: "master", value: state.master });
         log("master 14-bit " + state.master);
         return;
