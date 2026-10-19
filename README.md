@@ -1,4 +1,12 @@
-# fm1-ctrl — FM-1 as a hardware controller for web emulators
+# fm1-ctrl
+
+**Not just a MIDI controller: a way to play a firmware's web emulator with the real
+panel.** Every key, button and encoder goes out as plain MIDI, a JSON map says what it
+means, and the map can be pushed over SysEx at runtime. That is enough to drive the
+melodee and Felucca emulators you can already open in Chrome — knobs, keys and master
+today, buttons with `web/fm1-shim.js` — so a firmware's UI can be evaluated under real
+hands before anything is flashed. See [docs/web-emu-control.md](docs/web-emu-control.md)
+for exactly what works per firmware, and where the limits are.
 
 Every FM-1 firmware ships a web emulator that is mouse-only: 27 tiny buttons,
 draggable knobs, zero physicality. The FM-1 hardware is the opposite — a great

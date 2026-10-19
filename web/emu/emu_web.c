@@ -15,6 +15,7 @@
 /* firmware API (defined by the includes below) */
 #include "keyscan.h"     /* NKEYS NBUTTONS */
 #include "encoders.h"    /* NENC */
+#include "map.h"
 #define NOTE_KEY0 53     /* key idx 0 = F3 (mirrors keyscan.c's private define) */
 uint8_t leds_grid_get(int cc);
 uint8_t leds_key_get(int note);
@@ -84,6 +85,17 @@ EXPORT int32_t web_out_get(void)
     const uint8_t *m = out_q[out_r % OUTQ];
     out_r++;
     return (int32_t)m[0] | ((int32_t)m[1] << 8) | ((int32_t)m[2] << 16);
+}
+
+/* ---- map SysEx: F0 7D 43 54 .. F7, as the device's loop hands them over ---- */
+EXPORT int32_t web_sysex_in(const uint8_t *p, uint32_t n) { return map_sysex(p, n); }
+EXPORT uint32_t web_sysex_build(uint8_t *out) { return map_sysex_build(out); }
+EXPORT uint32_t web_map_get(uint32_t what)
+{
+    extern uint8_t map_encoder_cc(int), map_btn_cc(int), map_btn_led0(void), map_btn_mode(void);
+    switch (what) { case 0: return map_encoder_cc(0); case 1: return map_btn_cc(0);
+                    case 2: return map_btn_led0(); case 3: return map_btn_mode(); }
+    return 0;
 }
 
 /* ---- MIDI-in: the page hands bytes over; the firmware routes them ---- */

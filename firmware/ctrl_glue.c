@@ -3,8 +3,10 @@
 #include "encoders.h"
 #include "leds.h"
 #include "midi_io.h"
+#include "map.h"
 
 void ctrl_init(void) {
+    map_reset();
     keyscan_init(); encoders_init(); leds_init(); midi_io_init();
 }
 

@@ -13,3 +13,4 @@ $CC -O2 -Wall -Wextra -std=c99 -DMIDI_HOST -Ifirmware -o build/test_midi host/te
 $CC -O2 -Wall -Wextra -std=c99 -DMIDI_HOST -Ifirmware -o build/sim      host/sim.c      $MODS
 
 build/test_midi
+[ -x "$(command -v node)" ] && node web/fm1-shim.test.cjs >/dev/null && echo "shim tests: ok"

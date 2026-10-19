@@ -34,8 +34,10 @@ void keyscan_poll(uint64_t raw_mask) {
         } else {
             int b = i - NKEYS;
             if (btn_label) b = btn_label(b);
-            uint8_t cc = map_btn_cc(b);
-            midi_emit3(0xB0, cc, now ? 127 : 0);
+            if (map_btn_mode())                       /* button as a note (RemoteFM1 order) */
+                midi_emit3(now ? 0x90 : 0x80, map_btn_cc(b), now ? 127 : 0);
+            else
+                midi_emit3(0xB0, map_btn_cc(b), now ? 127 : 0);
         }
     }
     curr_raw = raw_mask;

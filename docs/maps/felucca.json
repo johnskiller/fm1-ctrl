@@ -1,0 +1,32 @@
+{
+  "version": "0.2",
+  "emu": "felucca",
+  "url": "https://hugelton.github.io/Felucca/emu/",
+  "native": true,
+  "notes": "KNOB_CC=20, MASTER_CC=27 (web/emu/worklet.js). The page takes notes and CCs for the synth; encoders only reach the UI when 'knobs' is ticked (it maps CC 20..26 to knob roles by relative delta, abs/bin/twos/sign modes). Buttons reach the UI only through the page's own {type:'buttons'} channel, which this firmware cannot produce - use web/fm1-shim.js.",
+  "inputs": {
+    "notes": {},
+    "ccs": {
+      "20": "knob:0",
+      "21": "knob:1",
+      "22": "knob:2",
+      "23": "knob:3",
+      "24": "knob:4",
+      "25": "knob:5",
+      "26": "knob:6"
+    }
+  },
+  "outputs": {
+    "keyLeds": {
+      "noteOn": "mirror"
+    },
+    "btnLeds": {
+      "cc": [
+        54,
+        67
+      ],
+      "mode": "one-cc-per-button",
+      "order": "panel"
+    }
+  }
+}

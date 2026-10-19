@@ -11,6 +11,7 @@
 #include "encoders.h"
 #include "leds.h"
 #include "ctrl_glue.h"
+#include "map.h"
 
 static midi_msg3 g(int i) { return midi_cap_get(i); }
 
@@ -18,7 +19,7 @@ static midi_msg3 g(int i) { return midi_cap_get(i); }
 static int shift1(int m) { return (m + 12) % 14; }
 
 int main(void) {
-    keyscan_init(); encoders_init(); leds_init(); midi_io_init();
+    ctrl_init();     /* map_reset + all modules, as on the device */
 
     /* T1: chromatic from F3 (CTL-1 KEY0_NOTE): key idx 12 = note 65.
      * Debounce needs 2 stable frames. */
@@ -147,6 +148,45 @@ int main(void) {
         assert(midi_cap_len() == 2);
         assert(midi_cap_get(0).b[0] == 0xB0 && midi_cap_get(0).b[1] == 40 && midi_cap_get(0).b[2] == 127);
         keyscan_btn_map(0);                          /* back to identity for later tests */
+    }
+
+    /* T13: runtime map over SysEx (F0 7D 43 54 ...): set, get, reset. */
+    {
+        uint8_t req[64], ans[64];
+        uint32_t n = 0, an;
+        int i;
+        req[n++] = 0x7D; req[n++] = 'C'; req[n++] = 'T'; req[n++] = 0x01;   /* SET */
+        req[n++] = 7;
+        for (i = 0; i < 7; i++) req[n++] = (uint8_t)(30 + i);              /* enc -> CC 30..36 */
+        req[n++] = 14;
+        for (i = 0; i < 14; i++) req[n++] = (uint8_t)(60 + i);             /* btn -> CC 60..73 */
+        req[n++] = 74;                                                     /* btn LED base */
+        req[n++] = 1;                                                      /* flags: mirror on, CC mode */
+        assert(map_sysex(req, n) == 1);
+        assert(map_encoder_cc(0) == 30 && map_encoder_cc(6) == 36);
+        assert(map_btn_cc(0) == 60 && map_btn_cc(13) == 73);
+        assert(map_btn_led0() == 74 && map_mirror() == 1 && map_btn_mode() == 0);
+
+        an = map_sysex_build(ans);
+        assert(ans[0] == 0x7D && ans[1] == 'C' && ans[2] == 'T' && ans[3] == 0x01);
+        assert(ans[4] == 7 && ans[5] == 30 && ans[an - 1] == 1);
+
+        /* button-as-note mode: matrix 2 (FX) must emit 0x90 60 127 */
+        req[n - 1] = 3;                       /* mirror + notes */
+        assert(map_sysex(req, n) == 1);
+        assert(map_btn_mode() == 1);
+        midi_cap_clear(); ctrl_init();        /* ctrl_init resets the map: re-apply */
+        assert(map_sysex(req, n) == 1);
+        ctrl_frame_scan((uint64_t)1 << (27 + 2));
+        ctrl_frame_scan((uint64_t)1 << (27 + 2));
+        ctrl_frame_scan(0); ctrl_frame_scan(0);
+        assert(midi_cap_len() >= 1 && midi_cap_get(0).b[0] == 0x90 &&
+               midi_cap_get(0).b[1] == 62 && midi_cap_get(0).b[2] == 127);
+
+        req[3] = 0x03;                        /* RESET */
+        assert(map_sysex(req, 4) == 1);
+        assert(map_encoder_cc(0) == 20 && map_btn_cc(0) == 40);
+        assert(map_sysex((const uint8_t *)"\x7d\x00", 2) == 0);   /* not ours */
     }
 
     printf("ALL HOST TESTS PASSED\n");

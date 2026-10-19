@@ -7,6 +7,7 @@
 #include "keyscan.h"
 #include "leds.h"
 #include "ctrl_glue.h"
+#include "map.h"
 #include "fm1_cpu1.h"
 #include "fm1_adc.h"      /* MASTER pot (ADC ch4), RemoteFM1 PROTOCOL section 4 */
 
@@ -26,6 +27,32 @@ static void ctrl_drain_midi_in(void)
     while (plat_midi_in(&pkt)) {
         uint8_t st = (uint8_t)(pkt >> 8), d1 = (uint8_t)(pkt >> 16), d2 = (uint8_t)(pkt >> 24);
         ctrl_midi_in3(st, d1, d2);
+    }
+}
+
+/* ---- map SysEx: F0 7D 43 54 .. F7 changes the runtime map (no flash: a power
+ * cycle returns to the compiled-in default). Handled here, before ota_service(),
+ * because ota_take() consumes any frame it is handed. A GET is answered with the
+ * current map so a host page can verify what the unit is sending. ---- */
+static uint8_t sx_reply[64];
+static void ctrl_service_map_sysex(void)
+{
+    const uint8_t *p;
+    uint32_t n, k;
+    int rc;
+    if (!ota_frame_get(&p, &n))
+        return;
+    if (!map_sysex_is_ours(p, n))
+        return;                          /* ota.c's business */
+    rc = map_sysex(p, n);
+    ota_frame_done();
+    if (rc != 1)
+        return;
+    if (n >= 4u && p[3] == 0x02) {       /* GET -> answer */
+        k = map_sysex_build(sx_reply + 1);
+        sx_reply[0] = 0xF0;
+        sx_reply[1 + k] = 0xF7;
+        ota_wire_send(sx_reply, k + 2u);
     }
 }
 
@@ -173,6 +200,7 @@ static void ctrl_main(void)
         usb_retry(fm1_ms);
         ctrl_frame_scan((uint64_t)fm1_in.notes | (uint64_t)fm1_in.buttons << 27);
         ctrl_poll_encoders();
+        ctrl_service_map_sysex();       /* runtime map over SysEx (before ota_take) */
         ota_service();                  /* M-UPGRADE handshake: the installer must see us */
         if (usb.ota_req) {
             usb.ota_req = 0;
