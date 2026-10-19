@@ -10,6 +10,11 @@
 static bool      held[NSTATE];
 static uint64_t  curr_raw;
 
+/* matrix button id -> label id (0..13). Identity on host; on device the glue sets
+ * it to panel.c's calibration table, so CC 40 is always printed "FX". */
+static int (*btn_label)(int) = 0;
+void keyscan_btn_map(int (*f)(int)) { btn_label = f; }
+
 void keyscan_init(void) {
     for (int i = 0; i < NSTATE; i++) held[i] = false;
     curr_raw = 0;
@@ -27,7 +32,9 @@ void keyscan_poll(uint64_t raw_mask) {
             uint8_t n = (uint8_t)(NOTE_KEY0 + i);
             midi_emit3(now ? 0x90 : 0x80, n, now ? VEL : 0x00);
         } else {
-            uint8_t cc = map_btn_cc(i - NKEYS);
+            int b = i - NKEYS;
+            if (btn_label) b = btn_label(b);
+            uint8_t cc = map_btn_cc(b);
             midi_emit3(0xB0, cc, now ? 127 : 0);
         }
     }

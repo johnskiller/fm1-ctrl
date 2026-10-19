@@ -17,5 +17,8 @@
 
 void encoders_init(void);
 void encoders_poll(uint16_t ab, uint8_t push);
+/* direct detent injection: the FM-1 HAL decodes quadrature itself (fm1_enc_take),
+ * so on device we bypass our own decoder. role = map order (0..6). */
+void encoders_step(int role, int delta, int pushed);
 
 #endif

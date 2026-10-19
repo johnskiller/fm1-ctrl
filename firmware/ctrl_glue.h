@@ -13,5 +13,7 @@ void ctrl_frame_scan(uint64_t raw);
 void ctrl_frame_enc(uint16_t ab, uint8_t push);
 /* one MIDI-in message from the host (LED feedback path) */
 void ctrl_midi_in3(uint8_t st, uint8_t d1, uint8_t d2);
+/* device: copy leds.c state into the panel's LED matrix (weak no-op on host) */
+void ctrl_leds_flush(void);
 
 #endif

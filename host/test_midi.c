@@ -14,6 +14,9 @@
 
 static midi_msg3 g(int i) { return midi_cap_get(i); }
 
+/* T12 stand-in for panel.c's label table: matrix 2 -> FX (label 0) */
+static int shift1(int m) { return (m + 12) % 14; }
+
 int main(void) {
     keyscan_init(); encoders_init(); leds_init(); midi_io_init();
 
@@ -130,6 +133,21 @@ int main(void) {
     assert(leds_btn_get(0) == 0);
     ctrl_midi_in3(0xB0, 68, 0x7F);   /* beyond the 14-button window: no crash, no bit */
     assert(leds_btn_get(14) == 0);
+
+    /* T12: panel label mapping (RemoteFM1 PROTOCOL section 4 order).
+     * matrix 0 = OCT- , 1 = OCT+ , 2 = FX .. 13 = REC. A matrix id must emit the
+     * CC of its printed label, not CC 40 + matrix id. */
+    {
+        midi_cap_clear();
+        ctrl_init();
+        keyscan_btn_map(shift1);
+        ctrl_frame_scan((uint64_t)1 << (27 + 2));   /* matrix 2 = FX */
+        ctrl_frame_scan((uint64_t)1 << (27 + 2));
+        ctrl_frame_scan(0); ctrl_frame_scan(0);
+        assert(midi_cap_len() == 2);
+        assert(midi_cap_get(0).b[0] == 0xB0 && midi_cap_get(0).b[1] == 40 && midi_cap_get(0).b[2] == 127);
+        keyscan_btn_map(0);                          /* back to identity for later tests */
+    }
 
     printf("ALL HOST TESTS PASSED\n");
     return 0;

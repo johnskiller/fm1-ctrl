@@ -24,6 +24,12 @@ static const panel_t PANEL_DEFAULT = {
     {1, 1, 1, 1, 1, 1, 1},
 };
 
+/* label <-> matrix id, the table above put to use (RemoteFM1 PROTOCOL §4:
+ * matrix 0 = OCT-, 1 = OCT+, 2..13 = FX..REC; labels are the page/map order) */
+static uint32_t panel_matrix_btn(uint32_t label) { return label < NB ? panel.btn[label] : label; }
+static uint32_t panel_matrix_enc(uint32_t role)  { return role < NE ? panel.enc[role] : role; }
+static int32_t  panel_dir_enc(uint32_t role)     { return role < NE ? panel.dir[role] : 1; }
+
 static int panel_valid(const panel_t *p)
 {
     uint32_t i, ok = p->magic == PANEL_MAGIC;

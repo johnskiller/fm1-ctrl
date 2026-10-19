@@ -20,5 +20,7 @@
 void keyscan_init(void);
 /* raw_mask bit i = scan point i contact closed this frame (raw, pre-debounce) */
 void keyscan_poll(uint64_t raw_mask);
+/* install a matrix-id -> label-id translation (device: panel.c's table) */
+void keyscan_btn_map(int (*f)(int));
 
 #endif

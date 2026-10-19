@@ -8,6 +8,7 @@
 #include "leds.h"
 #include "ctrl_glue.h"
 #include "fm1_cpu1.h"
+#include "fm1_adc.h"      /* MASTER pot (ADC ch4), RemoteFM1 PROTOCOL section 4 */
 
 /* ---- MIDI transport: 3-byte app events <-> USB-MIDI event packets ----
  * Felucca's rings carry 4-byte USB-MIDI packets, byte 0 = cable/CIN.
@@ -26,6 +27,69 @@ static void ctrl_drain_midi_in(void)
         uint8_t st = (uint8_t)(pkt >> 8), d1 = (uint8_t)(pkt >> 16), d2 = (uint8_t)(pkt >> 24);
         ctrl_midi_in3(st, d1, d2);
     }
+}
+
+/* ---- panel tables: matrix id <-> label id (panel.c), used for buttons, encoders
+ * and LEDs. RemoteFM1 PROTOCOL section 4 numbers the matrix 0 = OCT-, 1 = OCT+,
+ * 2..13 = FX..REC; our map/pages are in printed-label order. ---- */
+static int btn_matrix_to_label(int m)
+{
+    uint32_t i;
+    for (i = 0; i < NB; i++)
+        if (panel.btn[i] == m)
+            return (int)i;
+    return m;                        /* no calibration entry: pass through */
+}
+/* encoders: the HAL already counts detents (fm1_enc_take); role order is the map's
+ * (SELECT ALGO PRESETS K1..K4). applied dir so clockwise is always +. */
+static void ctrl_poll_encoders(void)
+{
+    uint32_t r;
+    for (r = 0; r < NE; r++) {
+        int e = (int)panel_matrix_enc(r);
+        int32_t st = fm1_enc_take((uint32_t)e);
+        if (st)
+            encoders_step((int)r, (int)st * (int)panel_dir_enc(r), 0);
+    }
+}
+
+/* MASTER pot: 14-bit CC pair 7 (msb) / 39 (lsb), on a >=2 count change, <=200 Hz
+ * (RemoteFM1 PROTOCOL section 4; melodee takes CC 27 as its own master, kept
+ * separate on purpose -- this is the physical pot, always sent). */
+static void ctrl_poll_master(void)
+{
+    static int32_t last = -1;
+    int32_t adc = fm1_adc_read(FM1_ADC_MASTER);
+    if (adc < 0)
+        return;
+    if (last >= 0 && adc - last < 2 && last - adc < 2)
+        return;
+    last = adc;
+    {
+        uint32_t v14 = (uint32_t)adc << 4;
+        midi_emit3(0xBE, 7,  (uint8_t)(v14 >> 7));
+        midi_emit3(0xBE, 39, (uint8_t)(v14 & 0x7F));
+    }
+}
+
+/* LED feedback to the physical panel: leds.c state -> HAL matrix. The HAL takes
+ * matrix ids (buttons 0..13, note keys 14..40) and its own dim/lit scan. */
+void ctrl_leds_flush(void)
+{
+    uint32_t i;
+    static uint32_t prev_key, prev_btn;
+    uint32_t key = 0, btn = 0;
+    for (i = 0; i < 27u; i++)
+        key |= (uint32_t)leds_key_get(NOTE_KEY0 + (int)i) << i;
+    for (i = 0; i < 14u; i++)
+        btn |= (uint32_t)leds_btn_get((int)i) << i;
+    if (key == prev_key && btn == prev_btn)
+        return;                      /* cheap: only on change */
+    prev_key = key; prev_btn = btn;
+    for (i = 0; i < 14u; i++)
+        fm1_led_key(panel_matrix_btn((uint32_t)i), (btn >> i) & 1u);
+    for (i = 0; i < 27u; i++)
+        fm1_led_key(14u + i, (key >> i) & 1u);
 }
 
 /* ---- TIMER5 ISR: x0x's, minus audio/UAC ---- */
@@ -92,6 +156,8 @@ static void ctrl_main(void)
     fm1_input_init();
     panel_init();
     midi_transport_send = midi_transport_usb3;
+    keyscan_btn_map(btn_matrix_to_label);
+    fm1_adc_init();
     ctrl_init();
     usb_start();
     fm1_timer5_start(isr_timer5, 4);
@@ -106,9 +172,17 @@ static void ctrl_main(void)
         fm1_wdt_feed();
         usb_retry(fm1_ms);
         ctrl_frame_scan((uint64_t)fm1_in.notes | (uint64_t)fm1_in.buttons << 27);
+        ctrl_poll_encoders();
+        ota_service();                  /* M-UPGRADE handshake: the installer must see us */
+        if (usb.ota_req) {
+            usb.ota_req = 0;
+            ota_session();              /* commits and resets; on failure returns here */
+        }
         ctrl_drain_midi_in();
-        if (fm1_ms - t0 >= 1000u) {     /* heartbeat: PLAY button's light, 1 Hz */
+        ctrl_leds_flush();
+        if (fm1_ms - t0 >= 20u) {       /* MASTER pot: <=50 Hz is plenty for a pot */
             t0 = fm1_ms;
+            ctrl_poll_master();
         }
     }
 }

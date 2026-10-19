@@ -27,8 +27,9 @@
 static volatile uint32_t fm1_ms;  /* milliseconds since boot (TIMER4, TIMER5 ISR) */
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 
-#include "usb.c"                  /* FELUCCA_UAC=0 FELUCCA_CDC=0 below: pure MIDI */
-#define FELUCCA_OTA 1             /* M-UPGRADE entry: keeps the web installer working */
+#define FELUCCA_OTA 1             /* M-UPGRADE entry: keeps the web installer working.
+                                   * MUST precede usb.c: it gates the SysEx/OTA path. */
+#include "usb.c"                  /* FELUCCA_UAC=0 FELUCCA_CDC=0: pure MIDI */
 #ifndef FELUCCA_ID
 #define FELUCCA_ID "FM-1_9299"    /* fm1-ctrl dev identity (sloop _9xxxx, x0x _9, CTL-1 its own) */
 #endif
@@ -47,9 +48,9 @@ static int ota_prog(uint32_t off, const void *p, uint32_t n)
 {
     if (!ota_in_area(off, n))
         return -8;
-    return fl_write(off, p, n);
+    return fl_write(off, p, n);   /* ROM-callable wrapper */
 }
-static int ota_fread(uint32_t off, void *p, uint32_t n) { return fl_read_ram(off, p, n); }
+static int ota_fread(uint32_t off, void *p, uint32_t n) { return FL_FAR(fl_read_ram)(off, p, n); }
 static void ota_show(uint32_t step, int32_t code)
 {
     static const char *const STEP[] = {"", "PACKAGE", "CHECK HEAD", "LOADER", "CONFIRM", "RESTART"};

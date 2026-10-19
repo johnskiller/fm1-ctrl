@@ -35,3 +35,11 @@ void encoders_poll(uint16_t ab, uint8_t push) {
         if (steps[i] <= -4) { steps[i] = 0; emit(i, (push >> i) & 1u, -1); }
     }
 }
+
+/* on device: the HAL counts detents, we just emit. Split >63 so nothing is lost
+ * (RemoteFM1 PROTOCOL section 4 does the same). */
+void encoders_step(int role, int delta, int pushed) {
+    while (delta > 63)  { emit(role, pushed, +63); delta -= 63; }
+    while (delta < -63) { emit(role, pushed, -63); delta += 63; }
+    if (delta) emit(role, pushed, delta);
+}
