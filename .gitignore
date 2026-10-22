@@ -7,3 +7,4 @@ build/
 # Tooling
 .codegraph/
 __pycache__/
+build/smoke.fwsc

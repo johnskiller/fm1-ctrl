@@ -82,6 +82,9 @@ def crc16(d, c=0):
     return c
 
 
+SMOKE = False
+
+
 def build_app():
     flags = [*CFLAGS, *FPU, "-Ifirmware/hal", "-Ifirmware/src", "-Ifirmware", "-Ibuild/gen",
              "-DFELUCCA_UAC=0", "-DFELUCCA_CDC=0"]
@@ -90,7 +93,7 @@ def build_app():
              ("cc", "-c", FW / "hal" / "fm1_vec.S", "-o", OUT / "fm1_vec.o"),
              ("cc", "-c", FW / "hal" / "fm1_isr.S", "-o", OUT / "fm1_isr.o"),
              ("cc", "-c", FW / "hal" / "fm1_cpu1.S", "-o", OUT / "fm1_cpu1.o"),
-             ("cc", *flags, "-c", FW / "src" / "ctrl.c", "-o", OUT / "ctrl.o")]
+             ("cc", *flags, "-c", FW / "src" / ("smoke.c" if SMOKE else "ctrl.c"), "-o", OUT / "ctrl.o")]
     objs = [OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o", OUT / "fm1_cpu1.o", OUT / "ctrl.o"]
     tc_all(*units)
     elf = OUT / "ctrl.elf"
@@ -194,14 +197,19 @@ def ldr_wrap(image):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--release", metavar="X.Y[.Z]", help="identity FM-1_9XXYYZZ")
+    ap.add_argument("--smoke", action="store_true",
+                    help="build the platform smoke test (no panel/keyscan/LED code)")
     a = ap.parse_args()
-    global PRODUCT
+    global PRODUCT, SMOKE
+    SMOKE = a.smoke
+    if a.smoke:
+        PRODUCT = "FM-1_9298"        # a distinct 9xx identity: the installer sees which build runs
     if a.release:
         m = re.fullmatch(r"(\d{1,2})\.(\d{1,2})(?:\.(\d{1,2}))?", a.release)
         if not m:
             raise SystemExit("--release X.Y[.Z]")
         PRODUCT = "FM-1_9%02d%02d%02d" % (int(m[1]), int(m[2]), int(m[3] or 0))
-    name = "ctrl.fwsc"
+    name = "smoke.fwsc" if SMOKE else "ctrl.fwsc"
     toolchain()
     GEN.mkdir(parents=True, exist_ok=True)
     # the font: vendored pregenerated header (gen_font.py needs Pillow)
