@@ -173,6 +173,17 @@ void fm1_cstart(void)
     fm1_reset_reason();
     fm1_wdt_arm(0x0D);
     fm1_irq_init();
+    {   /* supplies to M-VAVE's own levels before anything loads them: the boot
+         * loader leaves VDC14 3 / SYSVDD 11 (1.40 / 1.26 V), the stock firmware
+         * runs 7 / 15 (1.60 / 1.38 V). x0x does this at the top of fm1_main with
+         * its reason spelled out: under load some units read flash and SRAM
+         * wrong at the lower levels (fm1-x0x#21, fm1_sys.h). Our flash driver
+         * and USB both run under load. */
+        uint32_t f = irq_save();        /* fm1_flash.h's, as x0x uses */
+        fm1_vdc14_raise(7);
+        fm1_sysvdd_raise(15);
+        irq_restore(f);
+    }
     for (d = (uint32_t *)_bss_start; d < (uint32_t *)_bss_end; d++)
         *d = 0;
     for (d = (uint32_t *)_pool_start; d < (uint32_t *)_pool_end; d++)
