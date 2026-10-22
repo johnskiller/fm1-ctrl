@@ -206,6 +206,8 @@ static void ctrl_main(void)
     draw_text_box(0, 134, 240, &FONT_S, "EVERY CONTROL EMITS", C_GRAY, 1);
     fm1_input_init();
     panel_init();
+    fm1_mailbox_clear();        /* stale update/boot state from a previous firmware: clear
+                                 * it BEFORE lock_top() write-protects 0x01C7FD50.. */
     midi_transport_send = midi_transport_usb3;
     keyscan_btn_map(btn_matrix_to_label);
     fm1_adc_init();
