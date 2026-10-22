@@ -156,6 +156,14 @@ static void ctrl_timer5_irq(void)
 static void ctrl_main(void);
 extern uint8_t _bss_start[], _bss_end[], _pool_start[], _pool_end[];
 extern const uint8_t _data_load[], _data_start[], _data_end[];
+/* .ram_text / .c1_text: code that must execute from RAM (the flash driver runs
+ * while the flash is busy) -- linked in RAMTEXT at 0x01C00000, stored in the
+ * image, copied down here. x0x's fm1_cstart does the same; without it the flash
+ * driver, and with it the whole update path, runs from uninitialised RAM. */
+extern const uint8_t _rt_load[], _c1_load[];
+extern uint32_t _rt_start[], _rt_end[];        /* fm1_guard.h's declaration */
+extern uint8_t _c1_start[], _c1_end[];
+
 
 void fm1_cstart(void)
 {
@@ -173,6 +181,14 @@ void fm1_cstart(void)
         const uint8_t *s;
         for (s = _data_load, d = (uint32_t *)_data_start; (uint8_t *)d < _data_end; s += 4, d++)
             *d = *(const uint32_t *)s;
+    }
+    {   /* .ram_text + .c1_text -> RAMTEXT: REQUIRED, the flash driver lives there */
+        const uint8_t *s;
+        uint8_t *t;
+        for (s = _rt_load, t = (uint8_t *)_rt_start; t < (uint8_t *)_rt_end; s++, t++)
+            *t = *s;                       /* word-aligned: the linker guarantees it */
+        for (s = _c1_load, t = (uint8_t *)_c1_start; t < (uint8_t *)_c1_end; s++, t++)
+            *t = *s;
     }
     fm1_irq_enable_all();
     ctrl_main();
