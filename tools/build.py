@@ -194,6 +194,21 @@ def ldr_wrap(image):
     return bytes(out)
 
 
+def check_isr_wrappers(dis, names):
+    """The hardware entry is the asm wrapper in hal/fm1_isr.S, not a C function.
+    A C body that happens to be named isr_timer5 shadows the wrapper, --gc-sections
+    drops it, and the first tick jumps into code with no rti. The linker accepts
+    that silently, so check the linked image: docs/research/timer5-isr-trap.md."""
+    for n in names:
+        m = re.search(r"^%s:\n((?:[^\n]*\n){1,30})" % re.escape(n), dis, re.M)
+        if not m:
+            raise SystemExit("build: %s is missing from the image (asm wrapper dropped)" % n)
+        body = m.group(1)
+        if "rti" not in body:
+            raise SystemExit("build: %s does not end in rti -- a C function shadowed "
+                             "the asm wrapper in hal/fm1_isr.S" % n)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--release", metavar="X.Y[.Z]", help="identity FM-1_9XXYYZZ")
@@ -218,6 +233,7 @@ def main():
         ldr = ex.submit(build_loader)
         img, syms, dis, rt = build_app()
         ota = ldr.result()
+    check_isr_wrappers(dis, ["isr_timer5"])    # a C body here costs a flash cycle
     errors, notes = check(img, syms, dis, rt)
     for n in notes:
         print("  ok   ", n)
