@@ -69,19 +69,81 @@ static void ota_commit(const uint8_t *parm)
     fm1_delay_ms(30);
     fm1_enter_update(parm);
 }
-/* fm1_irq.h requires the app to supply the fault reporter */
+/* boot-stage beacon, set by ctrl_main.c's STAGE() and printed by fm1_fault below */
+extern volatile uint32_t ctrl_stage;
+
+/* fm1_irq.h requires the app to supply the fault reporter.
+ *
+ * A crash used to print the PC alone, which is nearly useless: the address is
+ * usually garbage (it is wherever the bad jump went), while the fields that say
+ * WHICH failure it was were captured and thrown away. Print them:
+ *
+ *   VEC   the vector that fired (1 = exception, 63 = TIMER5, 11 = audio, ...)
+ *   PC    r16 at the fault: where the CPU was
+ *   RET   the interrupted return address: the caller, usually inside our code
+ *   EMU   EMU_MSG -- bit 2 div0, bit 3 stack limit        <- the "what"
+ *   DBG   DBG_MSG -- bit 12 PC limit, 13 write limit, 4/5/16..21 bus
+ *   SP    the stack pointer: which stack, and how deep
+ *   IC    ICFG
+ *   UP    uptime in ms: 0 = died during bring-up (a specific init call), >3000
+ *         = it ran for a while first
+ *   #n    consecutive crash count (3+ = a reset loop the boot guard will catch)
+ */
+static void hex8(char *b, uint32_t v)
+{
+    uint32_t i;
+    for (i = 0; i < 8u; i++)
+        b[i] = "0123456789ABCDEF"[(v >> (28u - 4u * i)) & 15u];
+    b[8] = 0;
+}
+
+static void dec(char *b, uint32_t v)
+{
+    char t[12];
+    int n = 0, i = 0;
+    if (!v)
+        t[n++] = '0';
+    while (v) {
+        t[n++] = (char)('0' + (v % 10u));
+        v /= 10u;
+    }
+    while (n)
+        b[i++] = t[--n];
+    b[i] = 0;
+}
+
+static void frow(uint32_t y, const char *label, const char *val)
+{
+    char b[30];
+    uint32_t i = 0;
+    while (*label && i < 10u)
+        b[i++] = *label++;
+    while (*val && i < 29u)
+        b[i++] = *val++;
+    b[i] = 0;
+    draw_text_box(6, y, 228, &FONT_S, b, C_WHITE, 0);
+}
+
 static void fm1_fault(const fm1_crash_t *c)
 {
-    char b[9];
-    uint32_t i;
+    char t[12];
     lcd_fill(0, 0, 240, 240, RGB(160, 0, 0));
-    draw_text_box(0, 8, 240, &FONT_S, "fm1-ctrl CRASH", C_WHITE, 1);
-    for (i = 0; i < 8u; i++)
-        b[i] = "0123456789ABCDEF"[(c->pc >> (28u - 4u * i)) & 15u];
-    b[8] = 0;
-    draw_text_box(10, 60, 220, &FONT_S, b, C_WHITE, 0);
+    draw_text_box(0, 6, 240, &FONT_S, "fm1-ctrl CRASH", C_WHITE, 1);
+    dec(t, c->count);       frow(26,  "#", t);
+    dec(t, c->vec);         frow(42,  "VEC", t);
+    hex8(t, c->pc);         frow(58,  "PC", t);
+    hex8(t, c->rets);       frow(74,  "RET", t);
+    hex8(t, c->emu);        frow(90,  "EMU", t);
+    hex8(t, c->dbg);        frow(106, "DBG", t);
+    hex8(t, c->sp);         frow(122, "SP", t);
+    hex8(t, c->icfg);       frow(138, "IC", t);
+    dec(t, c->uptime_ms);   frow(154, "UPms", t);
+    hex8(t, c->etm[0]);     frow(170, "ETM0", t);
+    dec(t, c->early);       frow(186, "EARLY", t);
+    dec(t, (uint32_t)ctrl_stage); frow(202, "STAGE", t);
+    draw_text_box(0, 220, 240, &FONT_S, "REBOOT IN 20S", C_GRAY, 1);
     { uint32_t t0 = fm1_ticks();
-      while ((uint32_t)(fm1_ticks() - t0) < 4000u * 1000u * FM1_TICKS_PER_US) ; }
+      while ((uint32_t)(fm1_ticks() - t0) < 20000u * 1000u * FM1_TICKS_PER_US) ; }
     fm1_reboot();
 }
 

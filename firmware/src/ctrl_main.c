@@ -79,7 +79,10 @@ static void ctrl_poll_encoders(void)
     uint32_t r;
     for (r = 0; r < NE; r++) {
         int e = (int)panel_matrix_enc(r);
-        int32_t st = fm1_enc_take((uint32_t)e);
+        int32_t st;
+        if (e < 0 || (uint32_t)e >= FM1_NENC)
+            continue;                /* a corrupt calibration must not index enc_steps[] */
+        st = fm1_enc_take((uint32_t)e);
         if (st) {
             encoders_step((int)r, (int)st * (int)panel_dir_enc(r), 0);
             dbg_enc++;
@@ -325,30 +328,48 @@ static void ctrl_diag_draw(void)
     dline(222, "SAVE = BACK", "", C_GRAY);
 }
 
+/* boot-stage beacon: fm1_fault() prints it, so a crash during bring-up names the
+ * exact call instead of leaving a garbage PC to argue about. */
+volatile uint32_t ctrl_stage;
+#define STAGE(n) do { ctrl_stage = (n); } while (0)
+
 /* ---- main loop ---- */
 static void ctrl_main(void)
 {
     uint32_t t0;
+    STAGE(1);
     lcd_init();
+    STAGE(2);
     palette_set(1);
     draw_text_box(0, 96, 240, &FONT_M, "fm1-ctrl", C_HI, 1);
     draw_text_box(0, 134, 240, &FONT_S, "EVERY CONTROL EMITS", C_GRAY, 1);
+    STAGE(3);
     fm1_input_init();
+    STAGE(4);
     panel_init();
+    STAGE(5);
     fm1_mailbox_clear();        /* stale update/boot state from a previous firmware: clear
                                  * it BEFORE lock_top() write-protects 0x01C7FD50.. */
     midi_transport_send = midi_transport_usb3;
-    keyscan_btn_map(btn_matrix_to_label);
+    STAGE(6);
     fm1_adc_init();
-    ctrl_init();
+    STAGE(7);
+    ctrl_init();                /* module init first, then wire the hooks into it */
+    STAGE(8);
+    keyscan_btn_map(btn_matrix_to_label);
+    STAGE(9);
     usb_start();
+    STAGE(10);
+    STAGE(11);                          /* next: the ISR starts firing */
     fm1_timer5_start(isr_timer5, 4);   /* the asm wrapper, not a C function */
     fm1_guard_lock_top();
     fm1_irq_enable_all();
+    STAGE(12);
     fm1_delay_ms(300);
     lcd_fill(0, 0, 240, 240, C_BLACK);
     draw_text_box(0, 110, 240, &FONT_M, "fm1-ctrl", C_HI, 1);
 
+    STAGE(13);                          /* main loop reached */
     t0 = fm1_ms;
     for (;;) {
         uint64_t raw = (uint64_t)fm1_in.notes | (uint64_t)fm1_in.buttons << 27;

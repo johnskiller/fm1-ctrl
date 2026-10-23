@@ -14,6 +14,7 @@ static uint8_t btnled[NBUTTONS];   /* one CC per button, base = map_btn_led0() *
 void leds_init(void) {
     for (int i = 0; i < GRID_ROWS; i++) grid[i] = 0;
     for (int i = 0; i < 128; i++) keyled[i] = 0;
+    for (int i = 0; i < NBUTTONS; i++) btnled[i] = 0;   /* was left as .bss garbage */
 }
 
 void leds_on_cc(uint8_t cc, uint8_t val) {
