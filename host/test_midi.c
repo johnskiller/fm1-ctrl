@@ -189,6 +189,49 @@ int main(void) {
         assert(map_sysex((const uint8_t *)"\x7d\x00", 2) == 0);   /* not ours */
     }
 
+
+    /* T14: MASTER pot conditioning. The 14-bit CC pair exposes the ADC's low
+     * three bits (CC39 = (adc&7)<<4), so a single count of noise used to move
+     * the fine byte by 16 -- the 16/48 chatter heard on the panel. */
+    {
+        int32_t last = -1;
+        /* first read always announces */
+        assert(ctrl_master_accept(512, &last) == 1 && last == 512);
+        /* noise below the dead band is silent, however long it goes on */
+        assert(ctrl_master_accept(511, &last) == 0);
+        assert(ctrl_master_accept(513, &last) == 0);
+        assert(ctrl_master_accept(515, &last) == 0);      /* +3 */
+        assert(ctrl_master_accept(507, &last) == 0);      /* -5 */
+        assert(last == 512);                              /* nothing moved */
+        /* a real turn passes the band and moves the reference */
+        assert(ctrl_master_accept(519, &last) == 1 && last == 519);
+        assert(ctrl_master_accept(521, &last) == 0);      /* new noise floor */
+        /* exactly at the band edge it emits (>= dead band) */
+        assert(ctrl_master_accept(519 + CTRL_MASTER_DEADBAND, &last) == 1);
+        /* a conversion timeout never emits */
+        assert(ctrl_master_accept(-1, &last) == 0);
+        /* why the dead band has to cover the low 3 bits: CC39 = (adc & 7) << 4,
+         * so 512 -> 0 but 514 -> 32 in the "fine" byte */
+        assert(((512 & 7) << 4) == 0);
+        assert(((514 & 7) << 4) == 32);
+    }
+
+    /* T15: label id != matrix id. This is the class of bug that made long-press
+     * SAVE (label 7) open the diag page from GLO: fm1_in.buttons carries MATRIX
+     * ids, so a label constant must go through panel.btn[] first. The panel table
+     * is device-only, so pin the invariant that makes it matter: the default
+     * calibration is not the identity map. */
+    {
+        /* PANEL_DEFAULT.btn[] = {2,3,4,5,6,7,8,9,10,11,12,13,0,1} */
+        static const int def_btn[14] = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1};
+        unsigned i, differs = 0;
+        for (i = 0; i < 14; i++)
+            if (def_btn[i] != (int)i)
+                differs++;
+        assert(differs == 14);          /* every label maps elsewhere: never assume identity */
+        assert(def_btn[7] == 9);        /* SAVE sits on matrix 9, GLO on 7 */
+    }
+
     printf("ALL HOST TESTS PASSED\n");
     return 0;
 }

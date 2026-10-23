@@ -103,12 +103,21 @@ static void ctrl_poll_encoders(void)
 static void ctrl_poll_master(void)
 {
     static int32_t last = -1;
-    int32_t adc = fm1_adc_read(FM1_ADC_MASTER);
-    if (adc < 0)
+    int32_t adc = 0, v;
+    uint32_t i;
+    /* average several conversions: the pot's noise is +-2 counts and every single
+     * one of them used to reach the wire (see ctrl_glue.h, CTRL_MASTER_*) */
+    for (i = 0; i < CTRL_MASTER_OVERSAMPLE; i++) {
+        v = fm1_adc_read(FM1_ADC_MASTER);
+        if (v < 0)
+            break;
+        adc += v;
+    }
+    if (i == 0)
+        return;                          /* no good conversion at all */
+    adc /= (int32_t)i;
+    if (!ctrl_master_accept(adc, &last))
         return;
-    if (last >= 0 && adc - last < 2 && last - adc < 2)
-        return;                          /* >= 2 counts: the pot's own noise floor */
-    last = adc;
     midi_emit3(0xB0, 27, (uint8_t)(adc >> 3));
     {
         uint32_t v14 = (uint32_t)adc << 4;
@@ -393,7 +402,7 @@ static void ctrl_main(void)
             static uint32_t t_diag;
             t0 = fm1_ms;
             ctrl_poll_master();
-            if (fm1_in.buttons & (1u << B_SAVE)) {
+            if (fm1_in.buttons & (1u << panel_matrix_btn(B_SAVE))) {   /* matrix id, not label */
                 if (fm1_ms - t_diag >= 200u) {
                     t_diag = fm1_ms;
                     ctrl_diag_draw();

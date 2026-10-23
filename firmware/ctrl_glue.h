@@ -16,4 +16,21 @@ void ctrl_midi_in3(uint8_t st, uint8_t d1, uint8_t d2);
 /* device: copy leds.c state into the panel's LED matrix (weak no-op on host) */
 void ctrl_leds_flush(void);
 
+/* MASTER pot conditioning, host-testable.
+ *
+ * The pot is a 10-bit conversion but the 14-bit CC pair exposes its low three
+ * bits: CC39 = (adc & 7) << 4, so ONE count of ADC noise moves the "fine" byte
+ * by 16 -- the chatter (16 / 48) seen on the panel. Two counters:
+ *
+ *   CTRL_MASTER_OVERSAMPLE  reads averaged per poll (noise / sqrt(n))
+ *   CTRL_MASTER_DEADBAND    hysteresis in 10-bit counts: below this, no event
+ *
+ * 6 counts is 0.6 % of the pot's travel -- under what a hand can play, over the
+ * +-2 counts the conversion itself wanders. ctrl_master_accept() returns 1 when
+ * the value should be emitted, and remembers it in *last (-1 = nothing yet). */
+#define CTRL_MASTER_OVERSAMPLE 4
+#define CTRL_MASTER_DEADBAND   6
+
+int ctrl_master_accept(int32_t adc, int32_t *last);
+
 #endif
