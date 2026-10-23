@@ -127,9 +127,16 @@ void ctrl_leds_flush(void)
         fm1_led_key(14u + i, (key >> i) & 1u);
 }
 
-/* ---- TIMER5 ISR: x0x's, minus audio/UAC ---- */
-static void isr_timer5(void);
-static void ctrl_timer5_irq(void)
+extern void isr_timer5(void);        /* fm1_isr.S: FM1_ISR isr_timer5, fm1_timer5_irq */
+
+/* ---- TIMER5 ISR: x0x's, minus audio/UAC ----
+ * The name is load bearing: fm1_isr.S has `FM1_ISR isr_timer5, fm1_timer5_irq`, the
+ * asm entry that saves psr/rets/reti and ends in csync/rti. fm1_timer5_start() must
+ * be given isr_timer5 (the wrapper), and this body must be fm1_timer5_irq, or the
+ * wrapper is unreferenced, --gc-sections drops it, and a timer tick jumps into a C
+ * function that cannot return. That is what kept the first smoke build from ever
+ * reaching its main loop. */
+void fm1_timer5_irq(void)
 {
     static uint32_t sub;
     uint8_t usb_due;
@@ -224,7 +231,7 @@ static void ctrl_main(void)
     fm1_adc_init();
     ctrl_init();
     usb_start();
-    fm1_timer5_start(isr_timer5, 4);
+    fm1_timer5_start(isr_timer5, 4);   /* the asm wrapper, not a C function */
     fm1_guard_lock_top();
     fm1_irq_enable_all();
     fm1_delay_ms(300);
@@ -252,4 +259,3 @@ static void ctrl_main(void)
     }
 }
 
-static void isr_timer5(void) { ctrl_timer5_irq(); }
