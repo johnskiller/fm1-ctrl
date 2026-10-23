@@ -69,14 +69,21 @@ static int btn_matrix_to_label(int m)
 }
 /* encoders: the HAL already counts detents (fm1_enc_take); role order is the map's
  * (SELECT ALGO PRESETS K1..K4). applied dir so clockwise is always +. */
+/* on-screen diagnostic counters (ctrl_diag_draw renders them): declared up here
+ * because the pollers below increment them */
+static uint32_t dbg_boot, dbg_scan, dbg_enc, dbg_key, dbg_btn;
+volatile uint32_t dbg_irq;
+
 static void ctrl_poll_encoders(void)
 {
     uint32_t r;
     for (r = 0; r < NE; r++) {
         int e = (int)panel_matrix_enc(r);
         int32_t st = fm1_enc_take((uint32_t)e);
-        if (st)
+        if (st) {
             encoders_step((int)r, (int)st * (int)panel_dir_enc(r), 0);
+            dbg_enc++;
+        }
     }
 }
 
@@ -141,6 +148,7 @@ void fm1_timer5_irq(void)
     static uint32_t sub;
     uint8_t usb_due;
     fm1_timer5_ack();
+    dbg_irq++;
     fm1_input_tick();
     usb_due = (sub % 5u) == 0u;
     if (usb_due)
@@ -214,6 +222,109 @@ void fm1_cstart(void)
         ;
 }
 
+
+/* ---- on-screen diagnostic (hold SAVE to see it) ------------------------
+ * The first smoke build proved how expensive a blank screen is: the unit sat
+ * on its splash with no main loop and told nobody. This page is the same idea
+ * for the full firmware -- every layer that can be dead in silence has a line:
+ *
+ *   BOOT   main-loop iterations / 4          (0 = the loop never ran)
+ *   IRQ    TIMER5 ticks / 1000               (0 = the ISR is not running)
+ *   UP.CFG usb.up, then usb.config           (11 = the host enumerated us)
+ *   SCAN   keyscan_poll frames               (0 = the panel matrix is silent)
+ *   KEY    last raw key mask, hex            (press a key: this must change)
+ *   BTN    last raw button mask, hex
+ *   ENC    encoder detents taken
+ *   TX     USB-MIDI packets out              (press a key: +2 note on/off)
+ *   RX     packets in from the host          (host lights: must climb)
+ *   LED    button+key LEDs currently lit
+ *   MX     map checksum-ish: the 7 encoder CCs, hex
+ */
+
+static void dhex(char *b, uint32_t v, int digits)
+{
+    static const char d[] = "0123456789ABCDEF";
+    int i;
+    for (i = digits - 1; i >= 0; i--) {
+        b[i] = d[v & 0xFu];
+        v >>= 4;
+    }
+    b[digits] = 0;
+}
+
+static void dnum(char *b, uint32_t v)
+{
+    char t[12];
+    int n = 0, i = 0;
+    if (!v)
+        t[n++] = '0';
+    while (v) {
+        t[n++] = (char)('0' + (v % 10u));
+        v /= 10u;
+    }
+    while (n)
+        b[i++] = t[--n];
+    b[i] = 0;
+}
+
+static void dline(uint32_t y, const char *label, const char *val, uint16_t c)
+{
+    char b[28];
+    uint32_t i = 0;
+    while (*label && i < 14u)
+        b[i++] = *label++;
+    while (*val && i < 27u)
+        b[i++] = *val++;
+    b[i] = 0;
+    draw_text_box(4, y, 232, &FONT_S, b, c, 0);
+}
+
+static void ctrl_diag_draw(void)
+{
+    char v[12];
+    uint32_t lit = 0, i;
+    lcd_fill(0, 0, 240, 240, C_BLACK);
+    draw_text_box(0, 4, 240, &FONT_S, "fm1-ctrl DIAG", C_HI, 1);
+    dnum(v, dbg_boot / 4u);          dline(24,  "BOOT ", v, C_WHITE);
+    dnum(v, dbg_irq / 1000u);        dline(40,  "IRQ  ", v, C_WHITE);
+    { char t[8]; t[0] = (char)('0' + (usb.up ? 1 : 0)); t[1] = (char)('0' + (usb.config ? 1 : 0)); t[2] = 0;
+      dline(56, "UP.CFG ", t, usb.config ? C_HI : C_WHITE); }
+    dnum(v, dbg_scan);               dline(72,  "SCAN ", v, C_WHITE);
+    dhex(v, dbg_key, 7);             dline(88,  "KEY  ", v, C_WHITE);
+    dhex(v, dbg_btn, 4);             dline(104, "BTN  ", v, C_WHITE);
+    dnum(v, dbg_enc);                dline(120, "ENC  ", v, C_WHITE);
+    dnum(v, ctrl_dbg_tx);            dline(136, "TX   ", v, C_HI);
+    dnum(v, ctrl_dbg_rx);            dline(152, "RX   ", v, C_HI);
+    for (i = 0; i < 27u; i++)
+        lit += (uint32_t)leds_key_get(NOTE_KEY0 + (int)i);
+    for (i = 0; i < 14u; i++)
+        lit += (uint32_t)leds_btn_get((int)i);
+    dnum(v, lit);                    dline(168, "LED  ", v, C_WHITE);
+    { /* the runtime map: 7 encoder CCs, the fastest way to see a SysEx SET landed */
+      char t[24];
+      for (i = 0; i < 7u; i++)
+          dhex(t + i * 3, map_encoder_cc((int)i), 2), t[i * 3 + 2] = ' ';
+      t[21] = 0;
+      dline(184, "MAP  ", t, C_GRAY);
+    }
+    {   /* uptime: the page only redraws if the loop is alive */
+        char u[10], t[12];
+        uint32_t k = 0;
+        const char *p = "UP ";
+        while (*p)
+            t[k++] = *p++;
+        dnum(u, fm1_ms / 1000u);
+        for (i = 0; u[i]; i++)
+            t[k++] = u[i];
+        t[k++] = 's';
+        t[k++] = ' ';
+        t[k++] = ' ';
+        t[k] = 0;
+        dline(204, "", t, C_HI);
+    }
+    dline(222, "SAVE = BACK", "", C_GRAY);
+}
+
 /* ---- main loop ---- */
 static void ctrl_main(void)
 {
@@ -240,9 +351,14 @@ static void ctrl_main(void)
 
     t0 = fm1_ms;
     for (;;) {
+        uint64_t raw = (uint64_t)fm1_in.notes | (uint64_t)fm1_in.buttons << 27;
         fm1_wdt_feed();
         usb_retry(fm1_ms);
-        ctrl_frame_scan((uint64_t)fm1_in.notes | (uint64_t)fm1_in.buttons << 27);
+        dbg_boot++;
+        dbg_key = fm1_in.notes;
+        dbg_btn = fm1_in.buttons;
+        ctrl_frame_scan(raw);
+        dbg_scan++;
         ctrl_poll_encoders();
         ctrl_service_map_sysex();       /* runtime map over SysEx (before ota_take) */
         ota_service();                  /* M-UPGRADE handshake: the installer must see us */
@@ -252,9 +368,20 @@ static void ctrl_main(void)
         }
         ctrl_drain_midi_in();
         ctrl_leds_flush();
-        if (fm1_ms - t0 >= 20u) {       /* MASTER pot: <=50 Hz is plenty for a pot */
+        if (fm1_ms - t0 >= 20u) {       /* <=50 Hz is plenty for a pot and the diag page */
+            static uint32_t t_diag;
             t0 = fm1_ms;
             ctrl_poll_master();
+            if (fm1_in.buttons & (1u << B_SAVE)) {
+                if (fm1_ms - t_diag >= 200u) {
+                    t_diag = fm1_ms;
+                    ctrl_diag_draw();
+                }
+            } else if (t_diag) {
+                t_diag = 0;
+                lcd_fill(0, 0, 240, 240, C_BLACK);
+                draw_text_box(0, 110, 240, &FONT_M, "fm1-ctrl", C_HI, 1);
+            }
         }
     }
 }
