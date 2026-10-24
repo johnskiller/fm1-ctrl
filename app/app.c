@@ -130,8 +130,9 @@ static void scan_master(void)
         ctl.master_last = adc;
     }
     if (adc < 0) adc = 0;
-    if (adc > 4096) adc = 4096;
     v14 = (uint32_t)adc << 2;                    /* 0..4096 -> 0..16384 */
+    /* 4096 << 2 is 16384, one past 14 bits: this is the only clamp needed, and
+     * it also covers a platform that one day returns more than its contract. */
     if (v14 > 16383u) v14 = 16383u;
     out3(0xB0u, MASTER_CC, v14 >> 7);            /* CC27: 7-bit, the emulators' own knob */
     out3(0xB0u, MASTER_MSB, v14 >> 7);           /* CC7:  coarse */
