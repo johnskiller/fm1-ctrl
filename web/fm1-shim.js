@@ -1,4 +1,5 @@
-/* SPDX-License-Identifier: GPL-3.0-only
+/* SPDX-License-Identifier: MPL-2.0
+ * Copyright (C) 2026 johnskiller
  * fm1-ctrl shim: drive a Felucca-family web emulator from the real FM-1.
  *
  * Drop this into a page (or load it from the console) while a firmware's own web

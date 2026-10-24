@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MPL-2.0
+ * Copyright (C) 2026 johnskiller */
 /* node web/fm1-shim.test.cjs - device MIDI -> a Felucca-family emu page's panel */
 
 const assert = require('assert');

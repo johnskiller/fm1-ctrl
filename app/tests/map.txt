@@ -1,0 +1,31 @@
+# fm1-ctrl in the host simulator: every control sends its own event, unchanged.
+#   ctrl/build/host/ctrl_host ctrl/tests/map.txt ctrl/build/host
+wait 600
+shot boot.png
+
+# a key: F3 = note 53 (not 60: the FM-1's own layout)
+key 0 down
+wait 50
+shot key-f3.png
+key 0 up
+wait 50
+
+# a button: FX is CC 40, 127 down / 0 up
+press FX
+wait 30
+release FX
+wait 30
+
+# an encoder: SELECT is CC 20, relative 64+n
+turn SELECT 3
+wait 30
+turn SELECT -2
+wait 30
+
+# MASTER: CC 27 and the 14-bit pair
+wait 30
+shot master.png
+
+# the screen shows the counters
+wait 200
+shot final.png

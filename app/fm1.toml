@@ -1,0 +1,14 @@
+# fm1-ctrl: a thin USB + Bluetooth MIDI controller for the M-VAVE FM-1
+name = "ctrl"
+id_prefix = "FM-1_93"          # dev builds FM-1_9300, releases FM-1_93XXYYZZ
+usb_manufacturer = "fm1-ctrl"
+usb_product = "FM-1 CTRL"
+o2 = []
+ble = true                     # Bluetooth MIDI: a computer, tablet or phone connects to the FM-1
+ble_central = true             # and the FM-1 connects to Bluetooth MIDI devices too
+usb_audio_in = false           # a controller makes no sound
+usb_audio_out = false
+tagline = "a thin, transparent MIDI controller for the FM-1"
+repo = "https://github.com/johnskiller/fm1-ctrl"
+licence = "MPL-2.0"
+credits = "built on fm1-base and felucca-bsp"
