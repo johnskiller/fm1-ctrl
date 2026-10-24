@@ -152,3 +152,28 @@ felucca-bsp's files.
   needs the sink exposed (`window.__fm1send = send`) exactly as with x0x.
 - `plat_master()` is 0..4096 here, 0..1023 in melodee/Felucca's emu and 0..127 in
   DriftSeq's `masterVol`. The conversion belongs in the shim, one profile per host.
+
+## Two things the tests taught, after the port
+
+Both were found by writing the contract tests against the real `app.c` on a fake
+platform (15 cases, `sh app/tests/run.sh`), then mutating the source to see whether
+the tests noticed. 18 mutations, 18 caught -- but two of them only after the tests
+were improved, and both are things DriftSeq will meet:
+
+**A "frame" is not `app_frame`.** The platform's idiom is to drain `plat_midi_in`
+from the audio interrupt, in `app_render` (`template/app.c:45` does exactly this).
+A test that calls only `app_frame` never sees a host message, so anything you check
+about LEDs or MIDI-in will pass for the wrong reason. Test `app_render` then
+`app_frame`, in that order.
+
+**Defences need to be told apart before you test them.** MASTER has a dead band of 6
+counts *and* 4x oversampling. Measured: the pot's +-2 counts are already covered by
+the band alone, so a test using +-2 passes even with the oversampling deleted --
+the averaging only earns its place against excursions past the band (the test that
+catches its removal uses +-10, where each single read would emit but the mean is
+still 2048). If you have two mechanisms, know which one each test is holding up.
+
+Also: an app that is *included* by its test rather than linked lets the test read the
+state it keeps (`ctl.lit_keys`, `ctl.lit_btn`), which is the only way to tell "the
+host lit a key" from "the app ignored the host". A linked app can only be observed
+through `plat_*`, and LED state has no such window.

@@ -38,7 +38,21 @@ build).
 
 ## Verify without the hardware
 
-The host simulator writes the actual bytes it sent:
+Two independent ways.
+
+**The contract tests** — the real `app/app.c`, on a fake platform, no device and no
+fm1-base build:
+
+```sh
+sh app/tests/run.sh          # 15 cases, ~0.2 s
+```
+
+`app.c` is *included* rather than linked, so what is tested is the source that ships,
+and the test can read the state the app keeps (the LED masks). A "frame" there is
+`app_render` then `app_frame`, because the platform drains MIDI in from the audio
+interrupt.
+
+**The host simulator** — the whole platform, writing the actual bytes it sent:
 
 ```sh
 python3 platform/tools/build.py app --host
@@ -46,8 +60,8 @@ app/build/host/ctrl_host app/tests/map.txt app/build/host
 cat app/build/host/midi_out.txt
 ```
 
-That is the whole panel in eleven lines — see `platform/README.md` for the script
-language (`wait`, `key`, `press`, `turn`, `shot`, `expect`).
+See `platform/README.md` for the script language (`wait`, `key`, `press`, `turn`,
+`shot`, `expect`).
 
 ## Repository shape
 
