@@ -1,10 +1,10 @@
 <!doctype html>
-<!-- fm1-ctrl panel emulator: click/twiddle the FM-1 panel, see the exact MIDI bytes
+<!-- SPDX-License-Identifier: MPL-2.0
+     fm1-ctrl panel emulator: click/twiddle the FM-1 panel, see the exact MIDI bytes
      the controller firmware would emit; loopback tab shows what LEDs light from MIDI-in.
      Zero deps, one file. Panel topology + CC map: docs/maps/melodee.json v0.2,
-     firmware/keyscan.h (27 keys = F3..G5 = note 53..79, 14 buttons = CC 40..53),
-     firmware/encoders.c (relative detent: 64 +/- n), firmware/midi_io.c (feedback:
-     CC 0..15 -> 5x7 grid rows, note on/off -> key mirror). App layer: GPL-3.0-only. -->
+     app/app.c (27 keys = F3..G5 = note 53..79, 14 buttons = CC 40..53,
+     encoders relative 64 +/- n, feedback: note on/off -> key LEDs, CC 54..67 -> the buttons). -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
