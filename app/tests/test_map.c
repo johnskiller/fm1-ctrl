@@ -716,6 +716,6 @@ int main(void)
         assert(BTN_CC0 + B_SAVE < BTN_CC0 + NB);
     }
 
-    printf("ALL HOST TESTS PASSED (%d cases)\n", 21);
+    printf("ALL HOST TESTS PASSED (%d cases)\n", 23);
     return 0;
 }
