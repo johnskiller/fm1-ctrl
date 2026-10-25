@@ -68,6 +68,15 @@ typedef struct {
     /* the screen: how many rects were filled, and the tallest one's height --
      * enough to tell a pressure bar from nothing at all */
     int      rect_n, rect_h_max, line_n;
+    int      rect_last_h;      /* the last cv_rect's height */
+    /* what the screen was told to print, so a test can ask whether a value is
+     * actually displayed and not merely computed */
+    char     txt[64][24];
+    int      txt_n;
+    /* the y each cv_blit pushed to the panel: a band drawn but never blitted is
+     * not on the screen */
+    int      blit_y[32];
+    int      blit_n;
 } fake_panel_t;
 
 extern fake_panel_t fp;

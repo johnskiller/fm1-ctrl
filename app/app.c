@@ -281,14 +281,14 @@ static void draw(void)
 
     /* the header: the name, the Bluetooth state, the counters -- a glance says
      * whether both links are alive */
-    cv_begin(240, 32, C_BLACK);
+    cv_begin(240, 30, C_BLACK);
     {
-        int32_t x = cv_text(10, 6, &FONT_B, APP_NAME, C_WHITE);
+        int32_t x = cv_text(10, 5, &FONT_B, APP_NAME, C_WHITE);
 #if FM1B_BLE
-        x = cv_text(x + 8, 10, &FONT_XS, "BLE", plat_ble_connected() ? C_HI : C_DIM);
+        x = cv_text(x + 8, 9, &FONT_XS, "BLE", plat_ble_connected() ? C_HI : C_DIM);
 #endif
 #if FM1B_BLE_CENTRAL
-        x = cv_text(x + 6, 10, &FONT_XS, "DEV", plat_ble_device() == BLE_DEV_READY ? C_HI : C_DIM);
+        x = cv_text(x + 6, 9, &FONT_XS, "DEV", plat_ble_device() == BLE_DEV_READY ? C_HI : C_DIM);
 #endif
         (void)x;
         line[0] = 0;
@@ -298,48 +298,63 @@ static void draw(void)
         text_cat(line, "  IN ");
         num_text((int32_t)ctl.got, t);
         text_cat(line, t);
-        cv_text(230 - text_w(&FONT_XS, line), 10, &FONT_XS, line, C_GRAY);
+        cv_text(230 - text_w(&FONT_XS, line), 9, &FONT_XS, line, C_GRAY);
     }
     cv_blit(0, 0);
 
     /* the fourteen buttons: lit while this unit holds them */
-    cv_begin(240, 40, C_BLACK);
+    cv_begin(240, 36, C_BLACK);
     for (i = 0; i < NB; i++) {
-        int32_t x = 4 + (int32_t)(i % 7u) * 34, y = (int32_t)(i / 7u) * 20;
+        int32_t x = 4 + (int32_t)(i % 7u) * 34, y = (int32_t)(i / 7u) * 18;
         int on = (ctl.on_btn >> i) & 1u;
         cv_text(x, y, &FONT_XS, BTN_NAME[i], on ? C_WHITE : C_DIM);
     }
-    cv_blit(0, 32);
+    cv_blit(0, 30);
 
     /* the encoders: a detent count each, added up since boot */
-    cv_begin(240, 32, C_BLACK);
+    cv_begin(240, 30, C_BLACK);
     for (i = 0; i < NE; i++) {
         int32_t x = 4 + (int32_t)i * 34;
         cv_text(x, 0, &FONT_XS, ENC_SNAME[i], C_GRAY);
         num_text(ctl.turns[i], t);
-        cv_text(x, 13, &FONT_XS, t, C_HI);
+        cv_text(x, 14, &FONT_XS, t, C_HI);
     }
-    cv_blit(0, 72);
+    cv_blit(0, 66);
+
+    /* MASTER: the value the wire carries, 0..4096, as one number -- not the 14-bit
+     * pair's two halves, which is the receiver's business, not the player's. The
+     * rule under it is filled to the same value: where the knob is, at a glance. */
+    cv_begin(240, 20, C_BLACK);
+    {
+        int32_t v = ctl.master_last >= 0 ? ctl.master_last : 0;
+        cv_text(4, 0, &FONT_XS, "MASTER", C_GRAY);
+        num_text(v, t);
+        cv_text(236 - text_w(&FONT_XS, t), 0, &FONT_XS, t, C_HI);
+        cv_line(4, 16, 235, 16, C_LINE);
+        if (v > 0)
+            cv_rect(4, 14, v * 231 / 4096, 3, C_HI);
+    }
+    cv_blit(0, 96);
 
     /* the keys, a column each. The twenty on the analog rows grow a bar with the
      * pressure they report; the seven of the top row have no converter of their
      * own, so while held they carry a block at the top -- a different place for a
      * different thing, not a bar pretending to be a reading. */
-    cv_begin(240, 136, C_BLACK);
+    cv_begin(240, 106, C_BLACK);
     for (i = 0; i < NKEYS; i++) {
         int32_t x = 4 + (int32_t)i * 8;
         int on = (ctl.on_keys >> i) & 1u;
         if (analog_mask >> i & 1u) {
             int32_t h = on ? (int32_t)ctl.press[i] * 88 / 127 : 0;
             if (on && h < 3) h = 3;              /* a press is never invisible */
-            if (h) cv_rect(x, 96 - h, 6, h, C_HI);
-            else   cv_line(x, 95, x + 5, 95, C_LINE);
+            if (h) cv_rect(x, 103 - h, 6, h, C_HI);
+            else   cv_line(x, 103, x + 5, 103, C_LINE);
         } else {
-            if (on) cv_rect(x, 10, 6, 8, C_HI);
-            else    cv_line(x, 95, x + 5, 95, C_LINE);
+            if (on) cv_rect(x, 8, 6, 8, C_HI);
+            else    cv_line(x, 103, x + 5, 103, C_LINE);
         }
     }
-    cv_blit(0, 104);
+    cv_blit(0, 124);
 }
 
 /* ---------------------------------------------------------------- the app --- */

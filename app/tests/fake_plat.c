@@ -42,6 +42,8 @@ void fake_reset(void)
     inq_n = inq_i = 0;
     touch_is_on = 0;
     blits = 0;
+    fp.txt_n = 0;
+    fp.blit_n = 0;
 }
 
 /* ---- device/gfx.c's API, without a screen ---- */
@@ -49,14 +51,28 @@ void cv_begin(uint32_t w, uint32_t h, uint16_t bg) { (void)w; (void)h; (void)bg;
 int32_t cv_text(int32_t x, int32_t y, const felucca_font_t *f, const char *s, uint16_t c)
 {
     (void)y; (void)f; (void)c;
+    if (fp.txt_n < (int)(sizeof fp.txt / sizeof fp.txt[0])) {
+        size_t i;
+        for (i = 0; i + 1 < sizeof fp.txt[0] && s[i]; i++)
+            fp.txt[fp.txt_n][i] = s[i];
+        fp.txt[fp.txt_n][i] = 0;
+        fp.txt_n++;
+    }
     /* the app measures with text_w and lays out from its return: keep it honest */
     return x + (int32_t)strlen(s) * 6;
 }
-void cv_blit(uint32_t x, uint32_t y) { (void)x; (void)y; blits++; }
+void cv_blit(uint32_t x, uint32_t y)
+{
+    (void)x;
+    blits++;
+    if (fp.blit_n < (int)(sizeof fp.blit_y / sizeof fp.blit_y[0]))
+        fp.blit_y[fp.blit_n++] = (int)y;
+}
 void cv_rect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t c)
 {
     (void)x; (void)y; (void)w; (void)c;
     fp.rect_n++;
+    fp.rect_last_h = h;
     if (h > fp.rect_h_max)
         fp.rect_h_max = h;
 }

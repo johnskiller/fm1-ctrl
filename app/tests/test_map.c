@@ -568,6 +568,57 @@ int main(void)
         assert(ctl.on_keys == 0 && ctl.on_btn == 0);
     }
 
+    /* ================= T10g: MASTER's value is on the screen ===============
+     * The knob's position was in no display at all: the panel showed counters, the
+     * buttons, the encoders and the keys, and the one control the player turns
+     * most was invisible. One number, 0..4096, not the 14-bit pair's halves. */
+    {
+        boot();
+
+        assert(ctl.master_last >= 0);              /* boot announced the pot */
+
+        /* the screen is drawn on a 100 ms timer */
+        fp.master = 3000;
+        frames(MASTER_WIN);
+        {
+            int k, found = 0;
+            int n = fp.rect_n;
+            fp.txt_n = 0;                          /* only what this redraw printed */
+            frames(8);
+            assert(fp.rect_n > n);                 /* something was filled */
+            /* and the value on the screen is the knob's, as one number */
+            for (k = 0; k < fp.txt_n; k++)
+                if (strcmp(fp.txt[k], "3000") == 0)
+                    found = 1;
+            assert(found);                         /* 3000 was printed */
+            for (k = 0; k < fp.txt_n; k++)
+                if (strcmp(fp.txt[k], "MASTER") == 0)
+                    found = 2;
+            assert(found == 2);                    /* and labelled */
+            /* and the band was pushed to the panel, at MASTER's row */
+            found = 0;
+            for (k = 0; k < fp.blit_n; k++)
+                if (fp.blit_y[k] == 96)
+                    found = 1;
+            assert(found);
+        }
+
+        /* and the number it shows is the value the wire carried */
+        assert(ctl.master_last == 3000);
+        {
+            int32_t v14 = (uint32_t)ctl.master_last << 2;
+            assert(v14 >> 7 == 93);                /* CC27, the 0..127 a player sees */
+            assert((v14 & 0x7F) == 96);            /* CC39: (3000 & 31) << 2 */
+        }
+
+        /* a move inside the dead band changes neither the wire nor the display */
+        sent_clear();
+        fp.master = 3000 + 20;
+        frames(MASTER_WIN * 2);
+        assert(sent_n == 0);
+        assert(ctl.master_last == 3000);
+    }
+
     /* ================= T10f: the frames between the 60 Hz ones count too ===
      * main_fm1.c runs app_frame at most every 16 ms and app_input_only in
      * between, which is most of the loop. Both must read the panel, or a key
