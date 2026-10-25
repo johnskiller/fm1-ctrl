@@ -85,8 +85,11 @@ came about and what it replaced.
 - It does not make sound. A controller sends events.
 - Its own screen is a status page (counters, encoder positions, what the host lit).
 
-## Research notes
+## Docs
 
+- `docs/base-and-mcu.md` — what fm1-base gives a firmware, and what the AC79 can
+  actually do: the audio path, the second core (and its hardware defect), memory, the
+  analog keys. **Read this before designing an engine.**
 - `docs/research/porting-to-fm1-base.md` — what the port took, the ten pitfalls, and
   what DriftSeq will meet doing the same.
 - `docs/research/timer5-isr-trap.md` — the TIMER5 wrapper trap of the old tree.
