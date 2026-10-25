@@ -55,13 +55,13 @@ DriftSeq's file, route it through `plat_*`. "Fork" = fm1-base cannot host it as-
 | `firmware/src/ota.c` (396) | `device/unity.c` (update path, `ota_session`) | **drop** |
 | `firmware/src/panel.c` (109) | `plat_*` + `OBJ_PANEL` | **drop, and gain** — the calibration becomes persisted; DriftSeq's is not |
 | `firmware/src/lcd.c` (134) | `device/lcd.c` | **drop** |
-| `firmware/src/gfx.c` (5 — a wrapper) | `device/gfx.c` (`cv_*`) | **drop the wrapper, adapt the callers** (see §2) |
+| `firmware/src/gfx.c` (5) + `gfx_body.h` (243) | `device/gfx.c` (206) — **the same renderer**, 88.6 % identical | **drop both**; add `cv_disc`/`isqrt_i` in the app if used, set `APP_CANVAS_PX (240u*224u)` in `app.h` (§2) |
 | `firmware/src/libc.c`, `libc_fmt.h` | bsp's | **drop** |
 | `firmware/keyscan.c` (35), `encoders.c` (37), `leds.c` (32) | `plat_keys()`, `plat_enc()`, `plat_leds()` | **drop** |
 | `firmware/ctrl_glue.c` (13), `firmware/src/plat_ctrl.c` (11) + `.h` (20) | `plat.h` | **drop** |
-| `firmware/gen_font_pregen.h`, `felucca_font.h` | `assets/fonts` + `tools/gen_font.py` | **drop, and gain** — fonts generated at build time |
+| `firmware/gen_font_pregen.h` (1,877), `src/felucca_font.h` (5) | `assets/fonts` + `tools/gen_font.py` | **drop, and gain** — fonts generated at build time |
 
-Summing those files: **2,541 lines** gone before any DriftSeq logic moves. (Not
+Summing those files: **2,793 lines** gone before any DriftSeq logic moves. (Not
 counting the 1,877-line `gen_font_pregen.h`, which is a pregenerated font table
 rather than plumbing — fm1-base regenerates its own at build time, so it goes too,
 but it was never logic.)
@@ -98,57 +98,99 @@ but it was never logic.)
 
 ---
 
-## 2. The screen: the real work
+## 2. The screen: DriftSeq already has fm1-base's renderer
 
-DriftSeq draws into its own framebuffer through seven `ui_*.c` files — 1,973 lines
-of layout that assume it can write anywhere and blit when it likes.
+**Correction to an earlier draft of this document**, which claimed fm1-base has no
+framebuffer. It does. `device/gfx.c` holds `cv_px[]` — a real off-screen canvas —
+and it is in `.pool`, not `.bss`. The "banded" appearance comes from how apps *use*
+it, not from a limitation.
 
-fm1-base draws in **horizontal bands**:
+The important finding for DriftSeq: **`firmware/src/gfx_body.h` is the same renderer.**
+243 lines against fm1-base's 206, `difflib` similarity **88.6 %**, in three
+contiguous runs (116, 69 and 9 lines). Same `cv_px[]`, same `.pool` section, same
+`cv_begin` / `cv_band` / `cv_rect` / `cv_line` / `cv_text` / `cv_blit` /
+`cv_blit_from` / `draw_text_box` / `swap16` / palettes. It is an older copy of the
+same file, forked before fm1-base picked it up.
 
-```c
-cv_begin(240, h, C_BLACK);          /* a band h rows tall, black background   */
-cv_text(x, y, &FONT_XS, s, C_HI);   /* returns the pen x                      */
-cv_rect(x, y, w, h, C_HI);          /* filled                                 */
-cv_line(x0, y0, x1, y1, C_LINE);
-cv_blit(0, y);                      /* push the band to the panel at row y    */
-```
+The complete difference:
 
-There is no framebuffer to keep and no partial redraw. Three ways to go:
+| | DriftSeq `gfx_body.h` | fm1-base `gfx.c` |
+|---|---|---|
+| lines | 243 | 206 |
+| canvas size | `CV_MAX = 240 * CV_ROWS`, `CV_ROWS` 224 → 105 KiB (its own comment: "full 240x224 main area per frame (X0X bands <=144)") | `CV_MAX = APP_CANVAS_PX`, default `240*144` → 67.5 KiB, **overridable from `app.h`** |
+| `isqrt_i()` | present | absent |
+| `cv_disc()` | present | absent |
+| font typedef | in `gfx.c` glue, body has none | in `gfx.c` |
 
-1. **Band-per-region** (what fm1-ctrl does, 420 lines total). Split the screen into
-   the regions that change independently and redraw only the dirty ones. Cheapest
-   in RAM, most work in restructuring.
-2. **A framebuffer does not fit, and the blit is not exported.**
-   `device/lcd.c:104` has `lcd_blit(x, y, w, h, px)` — but it is **`static`**, so an
-   app cannot call it; the only path to the panel is `cv_blit`. And a 240×240
-   `uint16_t` buffer is 115,200 B against a 98,304 B `.data + .bss` cap with ~65 KiB
-   already spoken for. The `.pool` region (336 KiB at `0x1C20000`) is the one place a
-   framebuffer could live, but it is shared, uncached, and fm1-ctrl's experience is
-   that touching it costs more than it saves. **Treat "keep the framebuffer" as off
-   the table**; if it must be tried, it is a platform change (exporting a blit), which
-   breaks the unmodified-submodule property in §7.
-3. **A band adapter**: keep DriftSeq's drawing calls, implement them over `cv_*`
-   with an implicit `cv_begin`/`cv_blit` per region the caller declares. Mechanical,
-   but it hides the cost (every region is a full SPI transfer) and DriftSeq's UI
-   will need a dirty-region model anyway for 10 Hz refresh.
+So the port for the renderer is: **delete `gfx_body.h` and `gfx.c`, and add two
+functions to the platform copy** — or, better, carry `cv_disc` in DriftSeq's app code,
+since a disc is not a platform primitive. `APP_CANVAS_PX` in `app.h` is the supported knob
+for the canvas size; DriftSeq wants 224 rows (`APP_CANVAS_PX (240u * 224u)`) and
+fm1-ctrl wanted 136, both legal. DriftSeq's own header already does exactly this under
+a different name — the port is a rename, not a redesign.
 
-**The number that decides this**: a full 240×240 refresh is 115,200 bytes of 16-bit
-pixels. At the documented 60 MHz SPI clock (`LCD_BAUD 0`, ~44 MHz effective) that is
-**20.9 ms per full frame** — 21 % of a 100 ms redraw spent on the transfer alone, and
-the redraw cannot overlap it. Whichever route is taken, DriftSeq needs a dirty-region
-model: 1,973 lines of "draw it all" cannot run at a useful rate.
+A note on why fm1-base's default is 144 and not 240: the default is X0X's main area,
+not a RAM limit. Measured on both trees:
 
-Fonts (from `build/gen/felucca_font.h`, `{height, first, last, ...}`):
+| | fm1-ctrl | DriftSeq |
+|---|---|---|
+| `.pool` used | 93,704 B (canvas 69,120 + 3 BLE task stacks at 8 KiB) | **107,520 B** — the canvas alone, exact |
+| `.pool` of | 344,064 B | 344,064 B |
+| spare | 250,360 B | 236,544 B |
+| `.data+.bss` | 65,168 / 98,304 B | 48,024 / 98,304 B |
+
+DriftSeq's `.pool` is *entirely* canvas and it still has 236 KB spare; its `.bss` is
+half empty. Its build has no Bluetooth stacks in the pool, so a BLE build adds 24 KiB
+there (fm1-ctrl's does). RAM is not the constraint on either firmware. `.data+.bss` is
+the 96 KiB cap, and Bluetooth's 24 KiB heap lives there on a BLE build — the canvas is
+deliberately in `.pool` to stay out of it.
+
+### What actually costs time
+
+Two real constraints, neither of which is "no framebuffer":
+
+1. **`lcd_blit` is `static`** (`device/lcd.c:104`) and the only app-visible path to the
+   panel is `cv_blit` → `lcd_blit`. That is fine — DriftSeq's `cv_blit` calls
+   `lcd_blit` the same way — but it means an app cannot blit a region from its own
+   buffer at an arbitrary moment; it must be `cv_begin`/draw/`cv_blit`.
+
+2. **A full-frame transfer dominates the budget.** DriftSeq's frame is 240x224 —
+   107,520 B, which is **19.6 ms** at ~44 MHz effective (`LCD_BAUD 0`, 60 MHz
+   documented). A full 240x240 would be 21.0 ms. The arithmetic checks out against
+   `lcd.c`'s own hardware measurement: 240x72 at `LCD_BAUD 4` (12 MHz) is 23.0 ms by
+   formula and "23 ms" in the comment.
+
+   fm1-base's `lcd_data` leaves the DMA running and `lcd_sync()` waits only when the
+   buffer is touched again, so the main loop does work during the tail of a frame — but
+   the *next* draw into `cv_px` blocks. At 10 Hz the transfer alone is 20 % of the
+   period; at 60 Hz it is 117 % and impossible.
+
+   This is why X0X draws in bands: `cv_band(y0, h)` confines drawing to rows
+   `y0..y0+h-1` of one canvas, so several bands can be composed before a single
+   `cv_blit`, and a dirty band alone can be `cv_blit_from`-ed. It is an optimisation
+   for the transfer, not a shape imposed on the app.
+
+So the dirty-region model is still needed — but for the SPI budget, not for RAM.
+DriftSeq's `ui.c:48` does `cv_begin(240, 224, C_BLACK)` every frame: one full-canvas
+pass. At 19.6 ms a frame that caps the firmware near 50 Hz *before* any drawing logic
+runs, and 1,973 lines of UI will not fit in what is left. The fix is the one X0X already
+demonstrates in this same file: `cv_band` to compose several bands into one canvas, and
+`cv_blit_from` to send only the rows that changed.
+
+### Fonts
+
 `FONT_T` 12 (ASCII only), `FONT_XS` 15, `FONT_S` 16, `FONT_B` 16, `FONT_M` 24,
-`FONT_L` 32. **`FONT_M` and `FONT_L` stop at `0x5F` (95)** — no lowercase, no
-characters past `_`. Only `FONT_T/XS/S/B` cover to `0x7E`. If DriftSeq's screens
-use lowercase at large sizes, they will render as blanks, silently. `APP_BIG_FONT` defaults to
-`FONT_L` (32 px); overriding it with `FONT_M` saves 20 KB per `fm1b_config.h`. Faces are `BarlowSemiCondensed` (Medium /
-SemiBold / Bold) plus a Terminus mono set, generated at build time by
-`tools/gen_font.py` — so swapping in a face that matches DriftSeq's existing design
-is a build option, not a fork.
+`FONT_L` 32, from `build/gen/felucca_font.h` as `{height, pad, first, last, ...}`.
+**`FONT_M` and `FONT_L` stop at `0x5F`** — `glyph()` folds lowercase to uppercase when
+`f->last < 'a'`, so large text renders as capitals, not blanks. Anything outside
+`first..last`, and C1 controls, draw as `'?'`. `APP_BIG_FONT` defaults to `FONT_L`;
+`FONT_M` saves 20 KB. Faces are `BarlowSemiCondensed` (Medium / SemiBold / Bold) plus a
+Terminus mono set, generated at build time by `tools/gen_font.py` — swapping in a face
+that matches DriftSeq's design is a build option, not a fork.
 
----
+DriftSeq's `gen_font_pregen.h` (1,877 lines) is a *vendored pregenerated* copy of the
+same tables; the real build regenerates it, and the wasm UI build includes it directly.
+On fm1-base it goes away entirely.
 
 ## 3. Details that will bite, in the order they bit fm1-ctrl
 
@@ -284,11 +326,17 @@ GPL-3.0-only.
 
 ## 8. Honest summary
 
-- **Deletions**: 2,541 lines of platform plumbing, unambiguously a gain.
+- **Deletions**: 2,793 lines of platform plumbing — including the renderer, which is
+  the same file — unambiguously a gain.
 - **Rewrites**: the unity root, the boot path, the main loop, `app.c` — a week.
-- **The hard part**: 1,973 lines of screen code against a banded API with no
-  framebuffer and 20.9 ms per full refresh. This is where the schedule goes, and
-  no amount of testing helps until the dirty-region model exists.
+- **Easy, unexpectedly**: the renderer is *already ported*. `gfx_body.h` is an older
+  copy of fm1-base's `gfx.c` (88.6 % identical, same `cv_px[]` in `.pool`); DriftSeq
+  has two extra functions (`isqrt_i`, `cv_disc`) and a larger canvas, both of which
+  move over as an `APP_CANVAS_PX` define and 20 lines of app code.
+- **The hard part**: not the drawing API — the **SPI budget**. DriftSeq's 240x224
+  frame is 19.6 ms of transfer and `ui.c:48` redraws the whole canvas every frame. Its
+  1,973 lines of UI need a dirty-region model (`cv_band` + `cv_blit_from`, already in
+  the same file) to fit, and no allocation strategy changes that.
 - **Free**: Bluetooth MIDI, persisted calibration, backup/restore, `--web`, the
   screen reader, and a host simulator with real bytes.
 - **Unchanged and load-bearing**: the engine. If `ds_tick` comes through the port
