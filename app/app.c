@@ -37,13 +37,25 @@
  * ~5 ms steps, so a dead band of 3 keeps a resting finger off the wire */
 #define KEY_AFT     3u
 
-/* MASTER: the pot wanders +-2 counts and every one used to reach the wire. The
- * 14-bit pair also publishes the low three bits (CC39 = (adc&7)<<4), so ONE count
- * of noise moved the "fine" byte by 16 -- the 16/48 chatter heard on the panel.
- * Average first, then a dead band of 6 counts: 0.6 % of travel, under a hand's
- * resolution, over the conversion's own noise. */
-#define MASTER_OVERSAMPLE 4
-#define MASTER_DEADBAND   6
+/* MASTER: the pot's noise, and the reason it used to be audible. The 14-bit pair
+ * publishes the low five bits (CC39 = (adc & 31) << 2), so ONE count of noise
+ * moves the "fine" byte by 4, and the panel was seen stepping 8 / 36 / 88 while
+ * nothing touched the knob -- that is adc's low five bits going 2 / 9 / 22, a
+ * swing of 20 raw counts.
+ *
+ * Reading the pot four times inside one frame averages NOTHING here: the platform
+ * smooths it in the main loop, which runs once per loop pass, so all four reads
+ * return the same master_pos. The average has to be over frames, which is what
+ * the platform's own filter already does (knob += (a*16 - knob)/8); this is the
+ * other half -- a still hand must not move the wire at all.
+ *
+ * So: average the last MASTER_AVG frames, and keep a dead band of 24 raw counts
+ * (0.6 % of travel, ~2 counts of the 0..127 CC27 the player sees) between what is
+ * sent and what would be sent next. The band is measured against the value the
+ * wire last carried, not the previous frame, so slow drift cannot walk past it a
+ * count at a time. */
+#define MASTER_WIN      8
+#define MASTER_DEADBAND 24
 
 static const char *const BTN_NAME[NB] = {"FX", "SEL", "ENV", "LFO", "EDIT", "GLO", "HOME", "SAVE", "ARP", "SEQ",
                                          "PLAY", "REC", "OCT-", "OCT+"};
@@ -65,7 +77,10 @@ static struct {
     uint8_t  press[NKEYS];               /* the pressure each key reports now, 0..127 */
     uint8_t  press_sent[NKEYS];          /* the pressure the wire last carried */
     int32_t  turns[NE];                  /* detents since boot, per encoder */
-    int32_t  master_last;                /* -1: nothing emitted yet */
+    int32_t  master_last;                /* the value the wire last carried; -1: none yet */
+    int32_t  master_hist[MASTER_WIN];    /* one sample a frame */
+    int32_t  master_n;                   /* samples in the window (up to MASTER_WIN) */
+    uint32_t master_i;                   /* the oldest slot */
     uint32_t sent, got;                  /* messages out, messages in */
 } ctl;
 
@@ -160,22 +175,45 @@ static void scan_encoders(void)
 
 static void scan_master(void)
 {
-    uint32_t i, v14;
-    int32_t adc = 0, d;
+    int32_t win[MASTER_WIN], adc, d, t;
+    int32_t i, j, n;
+    uint32_t v14;
 
-    for (i = 0; i < MASTER_OVERSAMPLE; i++)
-        adc += (int32_t)plat_master();
-    adc /= (int32_t)MASTER_OVERSAMPLE;
+    /* One new sample a frame -- the platform already smooths the pot, so four
+     * reads inside one frame return the same number four times.
+     *
+     * The median of the last MASTER_WIN samples, not their mean: a mean spreads a
+     * single wild reading over the whole window, and the pot does produce those
+     * (the panel was seen stepping 8 / 36 / 88 -- adc's low five bits going
+     * 2 / 9 / 22 -- with nothing touching the knob). The median ignores them.
+     * It costs no lag on a real turn either: a hand moves the pot far past half
+     * the window in one frame, so the median follows at once. A still hand keeps
+     * the median exactly where it was, which is what the panel needs. */
+    ctl.master_hist[ctl.master_i] = (int32_t)plat_master();
+    if (++ctl.master_i >= MASTER_WIN)
+        ctl.master_i = 0;
+    if (ctl.master_n < (int32_t)MASTER_WIN)
+        ctl.master_n++;
 
-    if (ctl.master_last < 0) {
-        ctl.master_last = adc;                   /* the first read always announces */
-    } else {
+    n = ctl.master_n;
+    for (i = 0; i < n; i++)
+        win[i] = ctl.master_hist[i];
+    for (i = 1; i < n; i++) {                     /* insertion sort: eight items at most */
+        t = win[i];
+        for (j = i; j > 0 && win[j - 1] > t; j--)
+            win[j] = win[j - 1];
+        win[j] = t;
+    }
+    adc = win[n / 2];
+    if (adc < 0) adc = 0;
+
+    if (ctl.master_last >= 0) {
         d = adc - ctl.master_last;
         if (d < MASTER_DEADBAND && d > -MASTER_DEADBAND)
-            return;
-        ctl.master_last = adc;
+            return;                              /* a still hand sends nothing */
     }
-    if (adc < 0) adc = 0;
+    ctl.master_last = adc;
+
     v14 = (uint32_t)adc << 2;                    /* 0..4096 -> 0..16384 */
     /* 4096 << 2 is 16384, one past 14 bits: this is the only clamp needed, and
      * it also covers a platform that one day returns more than its contract. */
@@ -312,6 +350,8 @@ void app_init(void)
         set.ble_off = 0;
     }
     ctl.master_last = -1;
+    ctl.master_n = 0;
+    ctl.master_i = 0;
     ctl.keys = plat_keys();
     ctl.btn = plat_buttons();
 }

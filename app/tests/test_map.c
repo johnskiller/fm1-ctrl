@@ -65,6 +65,9 @@ static void boot(void)
     app_init();
     app_ui_init();
     frames(1);
+    /* the MASTER window is MASTER_WIN frames deep: fill it with whatever the pot
+     * is resting at, the way a device that has been on for a second looks */
+    frames(MASTER_WIN);
     sent_clear();
 }
 
@@ -233,7 +236,7 @@ int main(void)
         boot();
 
         fp.master = 2048;                         /* mid travel */
-        frames(1);
+        frames(MASTER_WIN);                       /* the window has to turn over */
         /* three messages: CC27, CC7 coarse, CC39 fine */
         assert(sent_n == 3);
         assert(sent[0].st == 0xB0 && sent[0].d1 == 27);
@@ -246,13 +249,13 @@ int main(void)
          * to the top first, then back to the bottom */
         boot();
         fp.master = 4096;                         /* the platform's maximum */
-        frames(1);
+        frames(MASTER_WIN);
         assert(sent_n == 3);
         assert(sent[0].d2 == 127 && sent[1].d2 == 127 && sent[2].d2 == 127);
 
         sent_clear();
         fp.master = 0;
-        frames(1);
+        frames(MASTER_WIN);
         assert(sent_n == 3);
         assert(sent[0].d2 == 0 && sent[1].d2 == 0 && sent[2].d2 == 0);
 
@@ -261,7 +264,7 @@ int main(void)
          * (14 bits is 16383; 5000 << 2 would be 20000). */
         sent_clear();
         fp.master = 5000;                         /* out of contract on purpose */
-        frames(1);
+        frames(MASTER_WIN);
         assert(sent_n == 3);
         assert(sent[0].d2 == 127 && sent[1].d2 == 127 && sent[2].d2 == 127);
     }
@@ -276,7 +279,7 @@ int main(void)
 
         boot();
         fp.master = 2048;
-        frames(1);
+        frames(MASTER_WIN);
         assert(sent_n == 3);                      /* the first read always announces */
 
         /* now sit still with +-2 counts of noise: 12 frames, no more messages */
@@ -293,45 +296,75 @@ int main(void)
 
         /* a real turn still passes */
         fp.master = 2048 + 40;
-        frames(1);
+        frames(MASTER_WIN);
         assert(sent_n == 6);
     }
 
-    /* ================= T9b: the 4x oversample averages within a frame =======
-     * T9 covers the dead band with a still pot; this one covers the averaging.
-     *
-     * Honest note on what each mechanism buys: the pot's real noise is about
-     * +-2 counts, and the dead band of 6 already covers that on its own (T9).
-     * The averaging is the second line of defence, for excursions larger than
-     * the dead band that are still only noise. So this test uses +-10: each
-     * single read is beyond the band (10 > 6) and would emit, while their mean
-     * is exactly 2048 and must not. Without the averaging this case fails. */
+    /* ================= T9c: the dead band covers the pot's real noise ======
+     * The reported fault: with nothing touching the knob the fine byte stepped
+     * 8 / 36 / 88, i.e. adc's low five bits went 2 / 9 / 22 -- a swing of 20 raw
+     * counts. The median alone would still follow a *sustained* 20-count shift
+     * (two wild readings in a row outvote the rest), so the band has to cover it.
+     * 24 raw counts is 0.6 % of travel and under 2 counts of the CC27 the player
+     * actually turns. */
     {
-        boot();                                   /* MASTER announced at 0 */
+        boot();
 
-        fp.master = 2048;
-        frames(1);
-        assert(sent_n == 3);                      /* 0 -> 2048: a real move */
+        fp.master = 1280;
+        frames(MASTER_WIN);
         sent_clear();
 
-        /* four reads inside one frame, alternating either side of 2048: each is
-         * 10 counts out, the mean is 2048 */
-        fp.seq_n = 4;
-        fp.seq[0] = 2048 + 10; fp.seq[1] = 2048 - 10;
-        fp.seq[2] = 2048 + 10; fp.seq[3] = 2048 - 10;
-        fp.seq_i = 0;
-        frames(1);
-        assert(sent_n == 0);                      /* the mean is 2048: unchanged */
+        /* the three readings from the report, sustained: adc 1282 / 1289 / 1302.
+         * All three are inside the band, so none may reach the wire. */
+        fp.master = 1282;
+        frames(MASTER_WIN * 2);
+        assert(sent_n == 0);
+        fp.master = 1289;
+        frames(MASTER_WIN * 2);
+        assert(sent_n == 0);
+        fp.master = 1302;
+        frames(MASTER_WIN * 2);
+        assert(sent_n == 0);
 
-        /* the same jitter, all on one side: the mean really did move, and
-         * (10 counts > the dead band) it must be reported */
-        fp.seq[0] = 2048 + 10; fp.seq[1] = 2048 + 10;
-        fp.seq[2] = 2048 + 10; fp.seq[3] = 2048 + 10;
-        fp.seq_i = 0;
-        frames(1);
+        /* a move a hand would call a move still goes through. 32 counts is one
+         * step of the CC27 the player sees (adc >> 5), and it must not be eaten. */
+        fp.master = 1280 + 32;
+        frames(MASTER_WIN);
         assert(sent_n == 3);
+        assert(sent[0].d2 == ((1280 + 32) << 2) >> 7);
+    }
 
-        fp.seq_n = 0;                             /* back to a steady pot */
+    /* ================= T9b: a wild reading is ignored, not averaged ========
+     * The pot does produce the odd reading far outside its own noise -- and the
+     * panel showed 8 / 36 / 88 (adc's low five bits going 2 / 9 / 22) with
+     * nothing touching the knob. A mean would spread one such reading over the
+     * whole window; the median drops it. One frame in eight wild must therefore
+     * change nothing at all, and the knob must still follow a real turn at once.
+     */
+    {
+        boot();
+
+        fp.master = 2048;
+        frames(MASTER_WIN);
+        assert(sent_n == 3);                      /* announced: a real move */
+        sent_clear();
+
+        /* every other frame produces a far-out reading: the median ignores them */
+        fp.seq_n = MASTER_WIN;
+        fp.seq[0] = 2048 + 400; fp.seq[1] = 2048;
+        fp.seq[2] = 2048 - 400; fp.seq[3] = 2048;
+        fp.seq[4] = 2048 + 400; fp.seq[5] = 2048;
+        fp.seq[6] = 2048 - 400; fp.seq[7] = 2048;
+        fp.seq_i = 0;
+        frames(MASTER_WIN * 2);
+        assert(sent_n == 0);                      /* 2048 throughout */
+
+        /* a real turn is followed within the window, not averaged away */
+        fp.seq_n = 0;
+        fp.master = 2200;                         /* 152 counts: past the dead band */
+        frames(MASTER_WIN);
+        assert(sent_n == 3);
+        assert(sent[0].d2 == (2200 << 2) >> 7);
     }
 
     /* ================= T10: the LEDs echo THIS unit, not the host ==========
