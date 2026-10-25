@@ -33,6 +33,8 @@ static void frames(int n)
 {
     while (n-- > 0) {
         int32_t lr[16];
+        fp.ms += 16;                /* the loop runs at ~60 Hz, and the screen is
+                                     * redrawn on a 100 ms timer */
         app_render(lr, 8, 4096);
         app_frame();
     }
@@ -51,6 +53,15 @@ static void render_once(void)
 static void boot(void)
 {
     fake_reset();
+    /* app_init() does not reset its own state, and on the device it does not
+     * need to: ctl lives in .bss and a boot starts it at zero. In the test the
+     * process outlives many "boots", so a lit LED from the previous case would
+     * survive into this one and make an assertion about *this* case pass for
+     * the wrong reason. Clear it here, which is what .bss does on a device. */
+    memset(&ctl, 0, sizeof ctl);
+    /* the twenty keys on PA7 / PA8 are the only ones with a converter: keys 0..19.
+     * On the device plat_analog_mask() says so; the fake is told once per boot. */
+    fp.analog = 0x000FFFFFu;
     app_init();
     app_ui_init();
     frames(1);
@@ -323,51 +334,259 @@ int main(void)
         fp.seq_n = 0;                             /* back to a steady pot */
     }
 
-    /* ================= T10: the LEDs come only from what the host sends =====
-     * app.c is included, not linked, so the test can read the app's own LED
-     * state: that is the only way to tell "the host lit a key" from "the app
-     * ignored the host". Nothing here may emit. */
+    /* ================= T10: the LEDs echo THIS unit, not the host ==========
+     * app.c is included, not linked, so the test reads the app's own state. The
+     * FM-1 shows what its own panel is doing; a host's note or CC is counted and
+     * dropped, and must not light anything. */
     {
         boot();
 
-        /* a note in the key span lights that key, and only that key */
+        /* a key this unit holds lights that key, and only that key */
+        fp.keys = 1u << (60 - KEY_NOTE0);
+        frames(1);
+        assert(ctl.on_keys == (1u << (60 - KEY_NOTE0)));
+
+        /* a button it holds lights its label */
+        fp.buttons = 1u << B_PLAY;
+        frames(1);
+        assert(ctl.on_btn == (1u << B_PLAY));
+
+        /* and letting go clears both */
+        fp.keys = 0;
+        fp.buttons = 0;
+        frames(1);
+        assert(ctl.on_keys == 0 && ctl.on_btn == 0);
+    }
+
+    {
+        boot();
+
+        /* what the host sends back is drained and counted, and lights nothing:
+         * the panel has one source of truth */
         fake_midi_in(0x90, 60, 100, PORT_USB);
+        fake_midi_in(0xB0, 54, 0x7F, PORT_USB);
         frames(1);
         assert(sent_n == 0);                       /* input alone emits nothing */
-        assert(ctl.lit_keys == (1u << (60 - KEY_NOTE0)));
+        assert(ctl.got == 2);                      /* but it was seen */
+        assert(ctl.on_keys == 0);                  /* and not obeyed */
+        assert(ctl.on_btn == 0);
 
-        /* note-off clears it */
-        fake_midi_in(0x80, 60, 0, PORT_USB);
+        /* the whole span the host used to drive is inert now */
+        fake_midi_in(0x90, 53, 100, PORT_USB);
+        fake_midi_in(0xB0, 67, 0x7F, PORT_USB);
         frames(1);
-        assert(sent_n == 0);
-        assert(ctl.lit_keys == 0);
+        assert(ctl.on_keys == 0 && ctl.on_btn == 0);
+    }
 
-        /* CC 54..67 light the buttons: 54 is FX, 67 is OCT+ */
+    /* ================= T10b: the hardware is told what to show =============
+     * A controller may keep perfect state and never write it to the panel: the
+     * keys stay dark and every test above still passes. So assert the call. */
+    {
+        boot();
+
+        fp.keys = 1u << (60 - KEY_NOTE0);          /* key C4 */
+        fp.buttons = 1u << B_FX;                   /* button FX */
+        frames(1);
+        assert(fp.led_n > 0);                      /* the panel was written at all */
+        assert(fp.led_k == (1u << (60 - KEY_NOTE0)));
+        assert(fp.led_b == (1u << B_FX));
+
+        /* and releasing is written too, not merely computed */
+        fp.keys = 0;
+        fp.buttons = 0;
+        frames(1);
+        assert(fp.led_k == 0);
+        assert(fp.led_b == 0);
+
+        /* nothing changed, so nothing is rewritten: keeping the state is not the
+         * same as showing it, and the scan is 60 times a second */
+        {
+            int n = fp.led_n;
+            frames(3);
+            assert(fp.led_n == n);
+        }
+    }
+
+    /* ================= T10c: pressure is polyphonic aftertouch, 0xA0 =======
+     * The twenty keys on the analog rows report how hard they are held; the wire
+     * carries it per key as 0xA0 note pressure. A press starts it at 0 (the note
+     * on is the velocity), a change past the dead band sends, and a small wobble
+     * does not. */
+    {
+        boot();
+
+        /* key 3 down: note on, then aftertouch only once it has a pressure */
+        fp.vel[3] = 90;
+        fp.press[3] = 40;
+        fp.down = 1u << 3;
+        fp.keys = 1u << 3;
+        frames(1);
+        assert(count(0x90) == 1);
+        assert(count(0xA0) == 1);
+        assert(find(0xA0, 53 + 3) >= 0);
+        assert(sent[find(0xA0, 53 + 3)].d2 == 40);
+
+        /* same pressure, frame after frame: no more aftertouch */
+        sent_clear();
+        frames(30);
+        assert(count(0xA0) == 0);
+
+        /* a wobble inside the dead band stays off the wire */
+        fp.press[3] = 41;
+        frames(1);
+        assert(count(0xA0) == 0);
+        fp.press[3] = 40;
+        frames(1);
+        assert(count(0xA0) == 0);
+
+        /* a real lean sends the new value */
+        fp.press[3] = 60;
+        frames(1);
+        assert(count(0xA0) == 1);
+        assert(sent[find(0xA0, 53 + 3)].d2 == 60);
+
+        /* lifting: the reading is not a pressure, so it is not sent */
+        sent_clear();
+        fp.down = 0;                               /* the key has left its seat */
+        fp.press[3] = 10;
+        frames(1);
+        assert(count(0xA0) == 0);
+
+        /* released: the note off, and the state cleared for the next press */
+        fp.keys = 0;
+        frames(1);
+        assert(count(0x80) == 1);
+        assert(ctl.press[3] == 0);
+    }
+
+    /* ================= T10d: the top row has no pressure, and says so ======
+     * The seven keys of the top row (keys 20..26, C#5..G5) have no converter of
+     * their own: their velocity comes from a probe through the LED line and they
+     * have no pressure at all. plat_analog_mask is what tells the app, and a
+     * platform that (wrongly) reported a reading must still not put it on the
+     * wire. */
+    {
+        boot();
+
+        assert(fp.analog == 0x000FFFFFu);          /* 20 keys: 0..19 */
+        for (i = 20; i < NKEYS; i++)
+            assert(!((analog_mask >> i) & 1u));
+
+        fp.vel[22] = 88;                           /* a top-row key, pressed */
+        fp.press[22] = 99;                         /* a reading it cannot have */
+        fp.down = 1u << 22;
+        fp.keys = 1u << 22;
+        frames(10);
+        assert(count(0x90) == 1);                  /* the note, with its velocity */
+        assert(sent[find(0x90, 53 + 22)].d2 == 88);
+        assert(count(0xA0) == 0);                  /* and never an aftertouch */
+
+        /* the analog ones still do */
+        fp.vel[19] = 70;
+        fp.press[19] = 55;                         /* key 19 = C5, the last analog key */
+        fp.down |= 1u << 19;
+        fp.keys |= 1u << 19;
+        frames(1);
+        assert(sent[find(0xA0, 53 + 19)].d2 == 55);
+    }
+
+    /* ================= T10e: the screen shows this unit ===================
+     * The key display draws a pressure bar for the analog keys and a block at the
+     * top for the top row, so the two kinds of press do not look alike. Drawn
+     * from local state: a host message changes nothing. */
+    {
+        boot();
+
+        fp.rect_n = 0;
+        fp.rect_h_max = 0;
+        fp.keys = 1u << 3;                         /* one analog key */
+        fp.press[3] = 127;
+        fp.down = 1u << 3;
+        frames(8);                                 /* past the 100 ms redraw */
+        assert(fp.rect_n > 0);                     /* something was filled */
+        assert(fp.rect_h_max > 80);                /* a full bar, not a stub */
+
+        /* half the pressure, half the bar */
+        boot();
+        fp.rect_h_max = 0;
+        fp.keys = 1u << 3;
+        fp.press[3] = 64;
+        fp.down = 1u << 3;
+        frames(8);
+        assert(fp.rect_h_max > 30 && fp.rect_h_max < 60);
+
+        /* a top-row key: its block is short and at the top, never a tall bar */
+        boot();
+        fp.rect_h_max = 0;
+        fp.keys = 1u << 22;
+        fp.press[22] = 127;                        /* would be a full bar if obeyed */
+        fp.down = 1u << 22;
+        frames(8);
+        assert(fp.rect_h_max > 0 && fp.rect_h_max <= 12);
+
+        /* and the host cannot paint the screen either */
+        boot();
+        fp.rect_n = 0;
+        fake_midi_in(0x90, 60, 100, PORT_USB);
         fake_midi_in(0xB0, 54, 0x7F, PORT_USB);
-        fake_midi_in(0xB0, 67, 1, PORT_USB);
         frames(1);
-        assert(sent_n == 0);
-        assert(ctl.lit_btn == ((1u << 0) | (1u << 13)));
+        /* the redraw is 10 Hz, so one frame may not have drawn yet; what must
+         * hold is that no key was marked on */
+        assert(ctl.on_keys == 0 && ctl.on_btn == 0);
+    }
 
-        /* zero clears, and it is the value that decides -- not the message */
-        fake_midi_in(0xB0, 54, 0, PORT_USB);
-        frames(1);
-        assert(ctl.lit_btn == (1u << 13));
+    /* ================= T10f: the frames between the 60 Hz ones count too ===
+     * main_fm1.c runs app_frame at most every 16 ms and app_input_only in
+     * between, which is most of the loop. Both must read the panel, or a key
+     * held through a quiet moment is never seen. */
+    {
+        boot();
 
-        /* out of range: CC 68 is past the 14 buttons, 52 is below them */
-        fake_midi_in(0xB0, 68, 0x7F, PORT_USB);
-        fake_midi_in(0xB0, 52, 0x7F, PORT_USB);
-        fake_midi_in(0x90, 52, 100, PORT_USB);     /* below the key span */
-        fake_midi_in(0x90, 80, 100, PORT_USB);     /* above it */
-        frames(1);
-        assert(sent_n == 0);
-        assert(ctl.lit_btn == (1u << 13));          /* unchanged */
-        assert(ctl.lit_keys == 0);                  /* still clear */
+        fp.keys = 1u << 5;
+        app_input_only();
+        assert(ctl.keys == (1u << 5));             /* seen without app_frame */
+        assert(ctl.on_keys == (1u << 5));
+        assert(count(0x90) == 1);
 
-        /* a note-on with velocity 0 is a note-off, not a light */
-        fake_midi_in(0x90, 60, 0, PORT_USB);
-        frames(1);
-        assert(ctl.lit_keys == 0);
+        fp.keys = 0;
+        app_input_only();
+        assert(ctl.keys == 0);
+        assert(count(0x80) == 1);
+    }
+
+    /* ...and they light the panel. A fresh boot has written nothing yet, so the
+     * first held key must reach plat_leds on its own. */
+    {
+        boot();
+
+        fp.keys = 1u << 9;
+        app_input_only();
+        assert(fp.led_k == (1u << 9));
+        assert(fp.led_b == 0);
+    }
+
+    /* ...and they keep the pressure current. touch_poll is what moves a key's
+     * velocity and pressure from the scan's events into the app's view, so a
+     * frame that skips it would carry the previous reading. The fake's touch_poll
+     * advances a value that only it can produce -- exactly what would be stale. */
+    {
+        boot();
+
+        fp.keys = 1u << 5;
+        fp.down = 1u << 5;
+        fp.press[5] = 40;
+        app_frame();                               /* the press, at 40 */
+        sent_clear();
+
+        fp.press[5] = 100;                         /* the key leans harder */
+        fp.poll_raise = 7;                         /* touch_poll() adds this to every
+                                                    * held key's reading, as the real
+                                                    * one advances it */
+        app_input_only();
+        assert(count(0xA0) == 1);
+        assert(sent[find(0xA0, 53 + 5)].d2 == 107);
+
+        fp.poll_raise = 0;
     }
 
     /* ================= T11: MIDI in is drained, not accumulated ============
@@ -464,6 +683,6 @@ int main(void)
         assert(BTN_CC0 + B_SAVE < BTN_CC0 + NB);
     }
 
-    printf("ALL HOST TESTS PASSED (%d cases)\n", 15);
+    printf("ALL HOST TESTS PASSED (%d cases)\n", 21);
     return 0;
 }

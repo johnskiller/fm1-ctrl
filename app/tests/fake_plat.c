@@ -53,13 +53,33 @@ int32_t cv_text(int32_t x, int32_t y, const felucca_font_t *f, const char *s, ui
     return x + (int32_t)strlen(s) * 6;
 }
 void cv_blit(uint32_t x, uint32_t y) { (void)x; (void)y; blits++; }
+void cv_rect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t c)
+{
+    (void)x; (void)y; (void)w; (void)c;
+    fp.rect_n++;
+    if (h > fp.rect_h_max)
+        fp.rect_h_max = h;
+}
+void cv_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t c)
+{
+    (void)x0; (void)y0; (void)x1; (void)y1; (void)c;
+    fp.line_n++;
+}
 int32_t text_w(const felucca_font_t *f, const char *s) { (void)f; return (int32_t)strlen(s) * 6; }
 void lcd_fill(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t c) { (void)x; (void)y; (void)w; (void)h; (void)c; }
 
 /* ---- lib/touch.h ---- */
 void touch_on(int on) { touch_is_on = on ? 1 : 0; }
-void touch_poll(void) { }
+void touch_poll(void)
+{
+    uint32_t i;
+    for (i = 0; i < NKEYS && fp.poll_raise; i++)
+        if ((fp.keys >> i & 1u) && fp.press[i] + (uint32_t)fp.poll_raise <= 127u)
+            fp.press[i] = (uint8_t)(fp.press[i] + fp.poll_raise);
+}
 uint32_t touch_vel(uint32_t key) { return key < NKEYS ? fp.vel[key] : 0; }
+uint8_t touch_pressure(uint32_t key) { return key < NKEYS ? fp.press[key] : 0; }
+int touch_down(uint32_t key) { return key < NKEYS && ((fp.down >> key) & 1u); }
 
 /* ---- plat.h ---- */
 uint32_t plat_ms(void) { return fp.ms; }
@@ -76,6 +96,8 @@ int32_t plat_enc(int role)
     return d;
 }
 
+uint32_t plat_analog_mask(void) { return fp.analog; }
+
 uint32_t plat_master(void)
 {
     if (fp.seq_n > 0) {              /* the pot jittering inside one frame */
@@ -88,11 +110,11 @@ uint32_t plat_master(void)
 int plat_battery(void) { return 4; }
 
 void plat_lights(uint32_t b, uint32_t k, uint32_t db, uint32_t dk, int glow)
-{ (void)b; (void)k; (void)db; (void)dk; (void)glow; }
+{ (void)db; (void)dk; fp.lights_b = b; fp.lights_k = k; fp.glow = glow; fp.lights_n++; }
 void plat_lights_mid(uint32_t b, uint32_t k) { (void)b; (void)k; }
-void plat_leds(uint32_t b, uint32_t k) { (void)b; (void)k; }
-void plat_glow(int on) { (void)on; }
-void plat_play_red(int r) { (void)r; }
+void plat_leds(uint32_t b, uint32_t k) { fp.led_b = b; fp.led_k = k; fp.led_n++; }
+void plat_glow(int on) { fp.glow = on; }
+void plat_play_red(int r) { fp.play_red = r; }
 
 int plat_midi_in(uint32_t *pkt, int *port)
 {

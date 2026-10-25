@@ -11,11 +11,12 @@ which brings Bluetooth MIDI.** The app is one file, `app/app.c`.
 
 | control | message |
 | --- | --- |
-| 27 keys (F3..G5) | Note On/Off, note **53..79**, velocity from the key's own sensing |
+| 27 keys | Note On/Off, note **53..79**, velocity from the key's own sensing |
+| 20 of them | poly aftertouch `0xA0` note pressure — the keys on the analog rows only |
 | 7 encoders | CC **20..26**, relative, `64 + detents` (split at ±63) |
 | 14 buttons | CC **40..53**, `127` down / `0` up, labels FX..OCT+ |
 | MASTER | CC **27** (7-bit) plus the 14-bit pair CC **7** / CC **39** |
-| LEDs in | notes 53..79 → the keys, CC 54..67 → the button LEDs |
+| LEDs / screen | echo of **this unit's** own panel: held keys and buttons, and each held key's pressure |
 
 Buttons are sent as **plain CC**, not `0xFA`/`0xFC` and not MMC. Measured reasons:
 the FM-1 emulators drop every byte `>= 0xF0` (`melodee`/`Felucca`
@@ -83,7 +84,12 @@ came about and what it replaced.
   `{type:"buttons"|"keys"|"enc"|"master"}` and **have no MIDI input**; `web/fm1-shim.js`
   is the translation layer, and it needs the page to expose its `send()`.
 - It does not make sound. A controller sends events.
-- Its own screen is a status page (counters, encoder positions, what the host lit).
+- Its own screen and LEDs echo **this unit**: the keys and buttons it is holding, and
+  the pressure each analog key reports. What the host sends back is counted (`IN n`)
+  and otherwise ignored — one FM-1, one source of truth for what the panel shows.
+- It sends aftertouch for the **20 keys on the analog rows** (F3..C5) only. The seven
+  keys of the top row (C#5..G5) have no converter of their own — their velocity comes
+  from a probe through the LED line — so they never send `0xA0`.
 
 ## Docs
 
