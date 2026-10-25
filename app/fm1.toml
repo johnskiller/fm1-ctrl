@@ -12,3 +12,36 @@ tagline = "a thin, transparent MIDI controller for the FM-1"
 repo = "https://github.com/johnskiller/fm1-ctrl"
 licence = "MPL-2.0"
 credits = "built on fm1-base and felucca-bsp"
+
+# ---------------------------------------------------------------------------
+# Trimming Bluetooth. Measured on this app, fm1-base 1ad2414, 2026-10-25.
+#
+#   baseline (ble_central = true)   flash 212,884   RAM 65,476   pool 93,704
+#   + ble_trim                      flash 189,388   RAM 59,412   pool 93,704
+#   + ble_no_pairing                flash 170,400   RAM 59,360   pool 93,704
+#   + ble_stack_kb 4 / ble_heap_kb 12
+#                                   flash 170,400   RAM 47,072   pool 81,416
+#
+# ble_trim = true cuts JieLi's Bluetooth to one link as a MIDI peripheral (LE
+# only, no central, no classic, no test code). The author's LOOM-8 figures were
+# -16.9 KB flash / -4.3 KB RAM; this app saves more because it also gives up the
+# central.
+#
+# Two things to decide before turning any of it on:
+#
+#  1. ble_trim is incompatible with ble_central (tools/build.py refuses both), and
+#     this app's screen has a "DEV" light that reads plat_ble_device(), which is
+#     BLE_DEV_OFF forever without the central. Turning the central off therefore
+#     turns that light off for good -- delete the indicator or keep the central.
+#     The app never scans or connects: only the indicator uses it.
+#
+#  2. ble_stack_kb / ble_heap_kb below the defaults are unverified on this
+#     hardware. The author measured 1.3 KB stack depth and a 7.1 KB heap peak
+#     with one link, MIDI both ways (LOOM-8). radio.c logs "stacks" and "heap"
+#     for this build -- read them off the device before going below 8/24.
+#
+# ble_trim = false
+# ble_no_pairing = false
+# ble_stack_kb = 4
+# ble_heap_kb = 12
+# ---------------------------------------------------------------------------
