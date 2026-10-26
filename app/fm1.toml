@@ -35,13 +35,20 @@ credits = "built on fm1-base and felucca-bsp"
 #     turns that light off for good -- delete the indicator or keep the central.
 #     The app never scans or connects: only the indicator uses it.
 #
-#  2. ble_stack_kb / ble_heap_kb below the defaults are unverified on this
-#     hardware. The author measured 1.3 KB stack depth and a 7.1 KB heap peak
-#     with one link, MIDI both ways (LOOM-8). radio.c logs "stacks" and "heap"
-#     for this build -- read them off the device before going below 8/24.
+#  2. ble_stack_kb / ble_heap_kb below the defaults. Measured on the FM-1
+#     (2026-10-26, fm1-ctrl with ble_central on, the PR's BLE name build), from
+#     tools/fm1_remote.py log: "stacks 512 768 0 heap 11488",
+#     "BT stacks 512 768 0 heap 11488/24576", "heap peak 11352 of 24576".
+#     So the stack figure above (4 KB) has ample headroom, but the heap figure
+#     (12 KB = 12288) would leave only 800 B over the 11488 peak -- too tight to
+#     use. That peak is with the central on; the 7.1 KB the author saw was one
+#     link with ble_trim, so do not read his number across.
+#
+#     If you turn the heap down, do it after reading these lines off your own
+#     unit (tools/fm1_remote.py log), and keep well clear of the peak.
 #
 # ble_trim = false
 # ble_no_pairing = false
 # ble_stack_kb = 4
-# ble_heap_kb = 12
+# ble_heap_kb = 16              # 16384: 4.9 KB over the 11488 measured peak; 12 was too tight
 # ---------------------------------------------------------------------------
